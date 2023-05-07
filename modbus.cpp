@@ -3,14 +3,14 @@
 
 WiFiClient client;
 
-const byte request[] = {0x0a, 0x87, 0x00, 0x00, 0x00, 0x06, 0x01, 0x03, 0x9c, 0x9b, 0x00, 0x02}; // Device 1 Function 03 Address 40091 -> Datatype 32bit float Big Endian
-
 union mb_union {
     unsigned char c[4];
     signed long l;
     float f;
     signed int i[2];
 } MBUnion;
+
+unsigned int transaction = 0;
 
 /**
  * Combine Bytes received over modbus
@@ -65,11 +65,27 @@ float combineBytes(unsigned char *buf, unsigned char pos, MBEndianess endianness
     }
 }
 
-void ModbusReadInputRequest(void) {
+void ModbusReadInputRequest(const char *ip, uint8_t unit, uint8_t function, unsigned int reg) {
+  uint8_t data[12];
+  unsigned int n = 0;
+
+  data[n++] = (uint8_t)(transaction>>8); // Transaction Identifier
+  data[n++] = (uint8_t)transaction++;
+  data[n++] = 0;                         // Protocol Identifier
+  data[n++] = 0;
+  data[n++] = 0;                         // Message Length
+  data[n++] = 6;
+  data[n++] = unit;                      // Unit Identifier
+  data[n++] = function;                  // Function Code
+  data[n++] = (uint8_t)(reg>>8);         // Data Address of first register
+  data[n++] = (uint8_t)reg;
+  data[n++] = 0;                         // Total number of registers
+  data[n++] = 2;
+
   if (client.connected()) client.stop();
 
-  if (client.connect("192.168.1.4", 502)) {
-    client.write(request, 12);
+  if (client.connect(ip, 502)) {
+    client.write(data, 12);
   }
 }
 
@@ -77,11 +93,11 @@ int ModbusAvailable(void) {
   return client.available();
 }
 
-float ModbusGetValue(void) {
+float ModbusGetValue(MBEndianess endianness, MBDataType dataType) {
   uint8_t data[13];
 
   client.read(data, 13); // 9 bytes header, 4 bytes data
   client.stop();
 
-  return combineBytes(data, 9, MB_ENDIANESS_HBF_HWF, MB_DATATYPE_FLOAT32);
+  return combineBytes(data, 9, endianness, dataType);
 }

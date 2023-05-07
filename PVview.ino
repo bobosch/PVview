@@ -9,6 +9,7 @@
 #include "PVfont.h"
 #include "modbus.h"
 
+// MD Parola settings
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
 #define MAX_DEVICES 4
 
@@ -16,6 +17,15 @@
 #define DATA_PIN 23
 #define CS_PIN 5
 
+// Modbus settings
+#define MB_IP "192.168.1.4"
+#define MB_UNIT 1
+#define MB_FUNCTION 3
+#define MB_REGISTER_POWER 40091
+#define MB_ENDIANESS MB_ENDIANESS_HBF_HWF
+#define MB_DATATYPE MB_DATATYPE_FLOAT32
+
+// Application settings
 #define INTERVAL 10 // seconds
 
 const char prefixes[] = " kMGTPEZYRQ";
@@ -101,11 +111,11 @@ void loop() {
     if (timer < millis()) {
       timer = millis() + (INTERVAL * 1000);
       strcpy(message, "");
-      ModbusReadInputRequest();
+      ModbusReadInputRequest(MB_IP, MB_UNIT, MB_FUNCTION, MB_REGISTER_POWER);
     }
 
     if (ModbusAvailable()) {
-      power = ModbusGetValue();
+      power = ModbusGetValue(MB_ENDIANESS, MB_DATATYPE);
       if(power > 0) {
         exponent = log10(power);
         point = exponent % 3;

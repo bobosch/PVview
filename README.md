@@ -25,6 +25,5 @@ An Ethernet only PV display - POE powered and using Modbus TCP to get data from 
 
 - Toggle between power and energy
 - Sleep at night (the ESP32...)
-- Configurable Modbus settings
 - Support multiple lines
 - Web interface
