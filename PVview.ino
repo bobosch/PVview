@@ -21,7 +21,6 @@
 const char prefixes[] = " kMGTPEZYRQ";
 
 bool eth_connected = false;
-uint8_t exponent = 1;
 unsigned long timer = 0;
 
 MD_Parola P = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
@@ -92,8 +91,8 @@ void setup() {
 }
 
 void loop() {
-  float power = 0;
-  uint8_t point = 0, thousand;
+  float power;
+  uint8_t exponent, point, thousand;
   char message[12], prefix = 32; // " "
 
   if (eth_connected) {
