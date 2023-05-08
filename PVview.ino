@@ -27,11 +27,13 @@
 
 // Application settings
 #define INTERVAL 10 // seconds
+#define TIMEOUT 30 // seconds
 
 const char prefixes[] = " kMGTPEZYRQ";
 
 bool eth_connected = false;
-unsigned long timer = 0;
+char message[12] = "";
+unsigned long timeout = 0, timer = 0;
 
 MD_Parola P = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 
@@ -171,20 +173,25 @@ void setup() {
 void loop() {
   float power;
   uint8_t exponent, point, thousand;
-  char message[12], prefix = 32; // " "
+  char prefix = 32; // " "
 
   if (eth_connected) {
     server.handleClient();
 
     if (timer < millis()) {
       timer = millis() + (INTERVAL * 1000);
-      strcpy(message, "");
       ModbusReadInputRequest(MB_IP, MB_UNIT, MB_FUNCTION, MB_REGISTER_POWER);
+    }
+
+    if (timeout && timeout < millis()) {
+      timeout = 0;
+      strcpy(message, "");
     }
 
     if (ModbusAvailable()) {
       power = ModbusGetValue(MB_ENDIANESS, MB_DATATYPE);
       if(power > 0) {
+        timeout = millis() + (TIMEOUT * 1000);
         exponent = log10(power);
         point = exponent % 3;
         thousand = exponent - point;
