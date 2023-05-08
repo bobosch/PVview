@@ -2,7 +2,6 @@
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <Update.h>
-#include <SPI.h>
 
 #include <MD_MAX72xx.h>
 #include <MD_Parola.h>
