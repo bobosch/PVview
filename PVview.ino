@@ -2,6 +2,7 @@
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <Update.h>
+#include <time.h>
 
 #include <MD_MAX72xx.h>
 #include <MD_Parola.h>
@@ -25,30 +26,41 @@
 #define MB_DATATYPE MB_DATATYPE_FLOAT32
 
 // Application settings
-#define INTERVAL 10 // seconds
-#define TIMEOUT 30 // seconds
+#define INTERVAL 5 // seconds
+#define RETRY_AFTER 3 // times
+#define RETRY_ERROR 3 // times
+
+#define SHOW_POWER 0
+#define SHOW_TIME 1
+#define ON_POWER 0
+#define ALWAYS 1
+
+const struct {
+    unsigned char Element;
+    unsigned char When;
+// Modify this array to your needs
+} Show[2] = {
+  // Element,   When
+  { SHOW_POWER, ON_POWER },
+  { SHOW_TIME,  ALWAYS },
+};
+
+// Time
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = 3600;
+const int   daylightOffset_sec = 3600;
 
 const char prefixes[] = " kMGTPEZYRQ";
 
 bool eth_connected = false;
 char message[12] = "";
-unsigned long timeout = 0, timer = 0;
+unsigned char cycle = 0, RetryAfter = RETRY_AFTER, RetryError = 0;
+unsigned long timer = 0;
+float power = 0;
 
 MD_Parola P = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 
 WebServer server(80);
-
-/*
-uint8_t	curString = 0;
-const char *msg[] =
-{
-  "Parola for",
-  "Arduino", 
-  "LED Matrix",
-  "Display" 
-};
-#define NEXT_STRING ((curString + 1) % ARRAY_SIZE(msg))
-*/
 
 const char* serverIndex =
 "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script>"
@@ -116,11 +128,54 @@ void WiFiEvent(WiFiEvent_t event) {
   }
 }
 
+void printTime(){
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)){
+    return;
+  }
+
+  sprintf(message, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
+}
+
+void readModbus() {
+  if (ModbusAvailable()) {
+    RetryError = 0;
+    power = ModbusGetValue(MB_ENDIANESS, MB_DATATYPE);
+  }
+}
+
+void printModbus() {
+  uint8_t exponent, point, thousand;
+  char prefix = 32; // " "
+
+  exponent = log10(power);
+  point = exponent % 3;
+  thousand = exponent - point;
+  if (thousand == 0) point = 3;
+  if (thousand >= 0 && thousand <= 30) prefix = prefixes[(uint8_t)(thousand / 3)];
+  else prefix = 63; // "?"
+  switch (point) {
+    case 0:
+      sprintf(message, "%1.2f %cW", power / pow10(thousand), prefix);
+      break;
+    case 1:
+      sprintf(message, "%2.1f %cW", power / pow10(thousand), prefix);
+      break;
+    default:
+      sprintf(message, "%3.0f %cW", power / pow10(thousand), prefix);
+      break;
+  }
+}
+
 void setup() {
   WiFi.onEvent(WiFiEvent);
 
   // Start the Ethernet, revision 7+ uses RTL8201
   ETH.begin(0, -1, 16, 17, ETH_PHY_RTL8201);
+
+  // Init and get the time
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+
   // You can browse to wesp32demo.local with this
   MDNS.begin("wesp32demo");
 
@@ -167,47 +222,46 @@ void setup() {
   // Matrix display
   P.begin();
   P.setFont(PVfont);
+
+  cycle = ARRAY_SIZE(Show) - 1;
 }
 
 void loop() {
-  float power;
-  uint8_t exponent, point, thousand;
-  char prefix = 32; // " "
+  unsigned char i, Element;
 
   if (eth_connected) {
     server.handleClient();
+    readModbus();
 
     if (timer < millis()) {
       timer = millis() + (INTERVAL * 1000);
-      ModbusReadInputRequest(MB_IP, MB_UNIT, MB_FUNCTION, MB_REGISTER_POWER);
-    }
 
-    if (timeout && timeout < millis()) {
-      timeout = 0;
-      strcpy(message, "");
-    }
+      if (RetryError > RETRY_ERROR) {
+        power = 0;
+      }
 
-    if (ModbusAvailable()) {
-      power = ModbusGetValue(MB_ENDIANESS, MB_DATATYPE);
-      if(power > 0) {
-        timeout = millis() + (TIMEOUT * 1000);
-        exponent = log10(power);
-        point = exponent % 3;
-        thousand = exponent - point;
-        if (thousand == 0) point = 3;
-        if (thousand >= 0 && thousand <= 30) prefix = prefixes[(uint8_t)(thousand / 3)];
-        else prefix = 63; // "?"
-        switch (point) {
-          case 0:
-            sprintf(message, "%1.2f %cW", power / pow10(thousand), prefix);
-            break;
-          case 1:
-            sprintf(message, "%2.1f %cW", power / pow10(thousand), prefix);
-            break;
-          default:
-            sprintf(message, "%3.0f %cW", power / pow10(thousand), prefix);
-            break;
+      for (i = 0; i < ARRAY_SIZE(Show); i++) {
+        cycle = (cycle + 1) % ARRAY_SIZE(Show);
+        if (cycle == 0) {
+          RetryAfter++;
         }
+        if(Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && power > 0)) {
+          break;
+        }
+      }
+
+      if (RetryAfter > RETRY_AFTER) {
+        Element = SHOW_POWER;
+      } else {
+        Element = Show[cycle].Element;
+      }
+
+      switch (Element) {
+        case SHOW_POWER:
+            RetryAfter = 0;
+            RetryError++;
+            ModbusReadInputRequest(MB_IP, MB_UNIT, MB_FUNCTION, MB_REGISTER_POWER);
+            break;
       }
     }
   } else {
@@ -215,7 +269,20 @@ void loop() {
   }
 
   if (P.displayAnimate()) {
-    timer = millis() + (INTERVAL * 1000) - 500;
+    timer = millis() + (INTERVAL * 1000) - 800;
+
+    strcpy(message, "");
+    if(Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && power > 0)) {
+      switch(Show[cycle].Element) {
+        case SHOW_POWER:
+          printModbus();
+          break;
+        case SHOW_TIME:
+          printTime();
+          break;
+      }
+    }
+
     //P.print(message);
     P.displayText(message, PA_RIGHT, 0, INTERVAL * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
   }
