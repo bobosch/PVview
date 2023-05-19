@@ -36,12 +36,13 @@
 const struct {
     unsigned char Element;
     unsigned char When;
+    textPosition_t Align;
 // Modify this array to your needs
 } Show[3] = {
-  // Element,    When
-  { SHOW_POWER,  ON_POWER },
-  { SHOW_ENERGY, ALWAYS },
-  { SHOW_TIME,   ALWAYS },
+  // Element,    When,     Align
+  { SHOW_POWER,  ON_POWER, PA_RIGHT },
+  { SHOW_ENERGY, ALWAYS,   PA_RIGHT },
+  { SHOW_TIME,   ALWAYS,   PA_CENTER },
 };
 
 struct {
@@ -326,6 +327,6 @@ void loop() {
     }
 
     //P.print(message);
-    P.displayText(message, PA_RIGHT, 0, INTERVAL * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
+    P.displayText(message, Show[cycle].Align, 0, INTERVAL * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
   }
 }
