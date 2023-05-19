@@ -60,6 +60,8 @@ float power = 0;
 
 MD_Parola P = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 
+Modbus M = Modbus();
+
 WebServer server(80);
 
 const char* serverIndex =
@@ -138,9 +140,10 @@ void printTime(){
 }
 
 void readModbus() {
-  if (ModbusAvailable()) {
+  if (M.available()) {
     RetryError = 0;
-    power = ModbusGetValue(MB_ENDIANESS, MB_DATATYPE);
+    M.read();
+    power = M.getValue(MB_ENDIANESS, MB_DATATYPE);
   }
 }
 
@@ -245,7 +248,7 @@ void loop() {
         if (cycle == 0) {
           RetryAfter++;
         }
-        if(Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && power > 0)) {
+        if (Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && power > 0)) {
           break;
         }
       }
@@ -258,10 +261,10 @@ void loop() {
 
       switch (Element) {
         case SHOW_POWER:
-            RetryAfter = 0;
-            RetryError++;
-            ModbusReadInputRequest(MB_IP, MB_UNIT, MB_FUNCTION, MB_REGISTER_POWER);
-            break;
+          RetryAfter = 0;
+          RetryError++;
+          M.readInputRequest(MB_IP, MB_UNIT, MB_FUNCTION, MB_REGISTER_POWER);
+          break;
       }
     }
   } else {
