@@ -9,7 +9,7 @@ An Ethernet only PV display - POE powered and using Modbus TCP to get data from 
 - Modbus TCP
 - Automatic prefixes (W, kW, MW, ...)
 - Firmware over-the-air updates (/serverIndex)
-- Display cycle between power and time (configurable)
+- Display cycle between power, energy and time (configurable)
 
 # Components
 

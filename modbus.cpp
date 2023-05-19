@@ -116,6 +116,6 @@ unsigned int Modbus::getTransactionID(void) {
   return Modbus::transactionID;
 }
 
-float Modbus::getValue(MBEndianess endianness, MBDataType dataType) {
-  return combineBytes(Modbus::rx, 9, endianness, dataType);
+float Modbus::getValue(MBEndianess endianness, MBDataType dataType, signed char Multiplier) {
+  return combineBytes(Modbus::rx, 9, endianness, dataType) * pow10(Multiplier);
 }

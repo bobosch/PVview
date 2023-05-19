@@ -24,7 +24,7 @@ class Modbus {
     int available(void);
     void read(void);
     unsigned int getTransactionID(void);
-    float getValue(MBEndianess endianness, MBDataType dataType);
+    float getValue(MBEndianess endianness, MBDataType dataType, signed char Multiplier);
 
   private:
     float combineBytes(unsigned char *buf, unsigned char pos, MBEndianess endianness, MBDataType dataType);

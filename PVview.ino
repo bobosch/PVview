@@ -18,12 +18,9 @@
 #define CS_PIN 5
 
 // Modbus settings
+#define MB_EM 0
 #define MB_IP "192.168.1.4"
 #define MB_UNIT 1
-#define MB_FUNCTION 3
-#define MB_REGISTER_POWER 40091
-#define MB_ENDIANESS MB_ENDIANESS_HBF_HWF
-#define MB_DATATYPE MB_DATATYPE_FLOAT32
 
 // Application settings
 #define INTERVAL 5 // seconds
@@ -31,7 +28,8 @@
 #define RETRY_ERROR 3 // times
 
 #define SHOW_POWER 0
-#define SHOW_TIME 1
+#define SHOW_ENERGY 1
+#define SHOW_TIME 2
 #define ON_POWER 0
 #define ALWAYS 1
 
@@ -39,10 +37,32 @@ const struct {
     unsigned char Element;
     unsigned char When;
 // Modify this array to your needs
-} Show[2] = {
-  // Element,   When
-  { SHOW_POWER, ON_POWER },
-  { SHOW_TIME,  ALWAYS },
+} Show[3] = {
+  // Element,    When
+  { SHOW_POWER,  ON_POWER },
+  { SHOW_ENERGY, ALWAYS },
+  { SHOW_TIME,   ALWAYS },
+};
+
+struct {
+    unsigned char Desc[13];
+    MBEndianess Endianness;
+    MBDataType DataType;
+    unsigned char Function; // 3: holding registers, 4: input registers
+    unsigned int PowerRegister; // Total power (W)
+    signed char PowerMultiplier; // 10^x
+    unsigned int EnergyRegister; // Total energy (Wh)
+    signed char EnergyMultiplier; // 10^x
+} EM[8] = {
+    // Desc,         Endianness,          DataType,     Function, P_Reg,Mul, E_Reg,Mul
+    { "Fronius Symo",MB_ENDIANESS_HBF_HWF,MB_DATATYPE_FLOAT32, 3,  40091, 0,  40101, 0 },
+    { "Phoenix Cont",MB_ENDIANESS_HBF_LWF,MB_DATATYPE_INT32,   4,   0x28,-1,   0x3E, 2 }, // PHOENIX CONTACT EEM-350-D-MCB (0,1V / mA / 0,1W / 0,1kWh) max read count 11
+    { "Finder 7E",   MB_ENDIANESS_HBF_HWF,MB_DATATYPE_FLOAT32, 4, 0x1026, 0, 0x1106, 0 }, // Finder 7E.78.8.400.0212 (V / A / W / Wh) max read count 127
+    { "Eastron",     MB_ENDIANESS_HBF_HWF,MB_DATATYPE_FLOAT32, 4,   0x34, 0,  0x156, 3 }, // Eastron SDM630 (V / A / W / kWh) max read count 80
+    { "ABB",         MB_ENDIANESS_HBF_HWF,MB_DATATYPE_INT32,   3, 0x5B14,-2, 0x5002, 1 }, // ABB B23 212-100 (0.1V / 0.01A / 0.01W / 0.01kWh) RS485 wiring reversed / max read count 125
+    { "SolarEdge",   MB_ENDIANESS_HBF_HWF,MB_DATATYPE_INT16,   3,  40083, 0,  40226, 0 }, // SolarEdge SunSpec (0.01V (16bit) / 0.1A (16bit) / 1W (16bit) / 1 Wh (32bit))
+    { "WAGO",        MB_ENDIANESS_HBF_HWF,MB_DATATYPE_FLOAT32, 3, 0x5012, 3, 0x6000, 3 }, // WAGO 879-30x0 (V / A / kW / kWh)
+    { "Finder 7M",   MB_ENDIANESS_HBF_HWF,MB_DATATYPE_FLOAT32, 4,   2536, 0,   2638, 0 }, // Finder 7M.38.8.400.0212 (V / A / W / Wh) / Backlight 10173
 };
 
 // Time
@@ -55,8 +75,9 @@ const char prefixes[] = " kMGTPEZYRQ";
 bool eth_connected = false;
 char message[12] = "";
 unsigned char cycle = 0, RetryAfter = RETRY_AFTER, RetryError = 0;
+unsigned int tID[2];
 unsigned long timer = 0;
-float power = 0;
+float energy = 0, power = 0;
 
 MD_Parola P = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 
@@ -140,18 +161,26 @@ void printTime(){
 }
 
 void readModbus() {
+  unsigned int ID;
+
   if (M.available()) {
-    RetryError = 0;
     M.read();
-    power = M.getValue(MB_ENDIANESS, MB_DATATYPE);
+    ID = M.getTransactionID();
+    if (ID == tID[SHOW_POWER]) {
+      RetryError = 0;
+      power = M.getValue(EM[MB_EM].Endianness, EM[MB_EM].DataType, EM[MB_EM].PowerMultiplier);
+    }
+    if (ID == tID[SHOW_ENERGY]) {
+      energy = M.getValue(EM[MB_EM].Endianness, EM[MB_EM].DataType, EM[MB_EM].EnergyMultiplier);
+    }
   }
 }
 
-void printModbus() {
+void printModbus(float value, String unit) {
   uint8_t exponent, point, thousand;
   char prefix = 32; // " "
 
-  exponent = log10(power);
+  exponent = log10(value);
   point = exponent % 3;
   thousand = exponent - point;
   if (thousand == 0) point = 3;
@@ -159,13 +188,13 @@ void printModbus() {
   else prefix = 63; // "?"
   switch (point) {
     case 0:
-      sprintf(message, "%1.2f %cW", power / pow10(thousand), prefix);
+      sprintf(message, "%1.2f %c%s", value / pow10(thousand), prefix, unit);
       break;
     case 1:
-      sprintf(message, "%2.1f %cW", power / pow10(thousand), prefix);
+      sprintf(message, "%2.1f %c%s", value / pow10(thousand), prefix, unit);
       break;
     default:
-      sprintf(message, "%3.0f %cW", power / pow10(thousand), prefix);
+      sprintf(message, "%3.0f %c%s", value / pow10(thousand), prefix, unit);
       break;
   }
 }
@@ -263,7 +292,14 @@ void loop() {
         case SHOW_POWER:
           RetryAfter = 0;
           RetryError++;
-          M.readInputRequest(MB_IP, MB_UNIT, MB_FUNCTION, MB_REGISTER_POWER);
+          M.readInputRequest(MB_IP, MB_UNIT, EM[MB_EM].Function, EM[MB_EM].PowerRegister);
+          tID[Element] = M.getTransactionID();
+          break;
+        case SHOW_ENERGY:
+          if (power || !energy) {
+            M.readInputRequest(MB_IP, MB_UNIT, EM[MB_EM].Function, EM[MB_EM].EnergyRegister);
+            tID[Element] = M.getTransactionID();
+          }
           break;
       }
     }
@@ -278,7 +314,10 @@ void loop() {
     if(Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && power > 0)) {
       switch(Show[cycle].Element) {
         case SHOW_POWER:
-          printModbus();
+          printModbus(power, "W");
+          break;
+        case SHOW_ENERGY:
+          printModbus(energy, "wh");
           break;
         case SHOW_TIME:
           printTime();
