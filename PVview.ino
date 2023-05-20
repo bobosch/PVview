@@ -8,6 +8,11 @@
 #include <MD_Parola.h>
 #include "PVfont.h"
 #include "modbus.h"
+#include "RemoteDebug.h"  //https://github.com/JoaoLopesF/RemoteDebug
+
+// Network settings
+#define HOSTNAME "wESP32"
+//#define DEBUG_DISABLED
 
 // MD Parola settings
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
@@ -86,6 +91,8 @@ Modbus M = Modbus();
 
 WebServer server(80);
 
+RemoteDebug Debug;
+
 const char* serverIndex =
 "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script>"
 "<form method='POST' action='#' enctype='multipart/form-data' id='upload_form'>"
@@ -134,7 +141,7 @@ void handleNotFound() {
 void WiFiEvent(WiFiEvent_t event) {
   switch (event) {
     case ARDUINO_EVENT_ETH_START:
-      ETH.setHostname("wESP32");
+      ETH.setHostname(HOSTNAME);
       break;
     case ARDUINO_EVENT_ETH_CONNECTED:
       break;
@@ -167,12 +174,15 @@ void readModbus() {
   if (M.available()) {
     M.read();
     ID = M.getTransactionID();
+    debugD("Modbus receive ID %d", ID);
     if (ID == tID[SHOW_POWER]) {
       RetryError = 0;
       power = M.getValue(EM[MB_EM].Endianness, EM[MB_EM].DataType, EM[MB_EM].PowerMultiplier);
+      debugI("Power is %0.0f", power);
     }
     if (ID == tID[SHOW_ENERGY]) {
       energy = M.getValue(EM[MB_EM].Endianness, EM[MB_EM].DataType, EM[MB_EM].EnergyMultiplier);
+      debugI("Energy is %0.0f", energy);
     }
   }
 }
@@ -249,8 +259,14 @@ void setup() {
 
   // Start the Ethernet web server
   server.begin();
+
   // Add service to MDNS-SD
   MDNS.addService("http", "tcp", 80);
+
+  // Debug
+  Debug.begin(HOSTNAME, 23, 3);
+  Debug.showColors(true);
+  Debug.setResetCmdEnabled(true);
 
   // Matrix display
   P.begin();
@@ -295,11 +311,13 @@ void loop() {
           RetryError++;
           M.readInputRequest(MB_IP, MB_UNIT, EM[MB_EM].Function, EM[MB_EM].PowerRegister);
           tID[Element] = M.getTransactionID();
+          debugD("Modbus request power ID %d", tID[Element]);
           break;
         case SHOW_ENERGY:
           if (power || !energy) {
             M.readInputRequest(MB_IP, MB_UNIT, EM[MB_EM].Function, EM[MB_EM].EnergyRegister);
             tID[Element] = M.getTransactionID();
+            debugD("Modbus request energy ID %d", tID[Element]);
           }
           break;
       }
@@ -327,6 +345,9 @@ void loop() {
     }
 
     //P.print(message);
+    debugV("Display: %s", message);
     P.displayText(message, Show[cycle].Align, 0, INTERVAL * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
   }
+
+  Debug.handle();
 }

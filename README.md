@@ -8,8 +8,9 @@ An Ethernet only PV display - POE powered and using Modbus TCP to get data from 
 - POE powered
 - Modbus TCP
 - Automatic prefixes (W, kW, MW, ...)
-- Firmware over-the-air updates (/serverIndex)
 - Display cycle between power, energy and time (configurable)
+- Firmware over-the-air updates (/serverIndex)
+- Debug with telnet
 
 # Components
 
@@ -19,8 +20,9 @@ An Ethernet only PV display - POE powered and using Modbus TCP to get data from 
 # Dependencies
 
 - Arduino IDE
-- MD_MAX72XX
-- MD_Parola
+- MD_MAX72XX by majicDesigns
+- MD_Parola by majicDesigns
+- RemoteDebug by Joao Lopes
 - https://github.com/espressif/arduino-esp32
 
 # ToDo
