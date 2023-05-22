@@ -17,7 +17,7 @@ Modbus::Modbus() {
 */
 float Modbus::combineBytes(unsigned char *buf, unsigned char pos, MBEndianess endianness, MBDataType dataType) {
     // ESP32 is little endian
- /*   if (dataType == MB_DATATYPE_INT16) {
+    if (dataType == MB_DATATYPE_INT16) {
         switch(endianness) {
             case MB_ENDIANESS_LBF_LWF: // low byte first, low word first (little endian)
             case MB_ENDIANESS_LBF_HWF: // low byte first, high word first
@@ -34,7 +34,7 @@ float Modbus::combineBytes(unsigned char *buf, unsigned char pos, MBEndianess en
         }
         Modbus::MBUnion.c[2] = (unsigned char)0;
         Modbus::MBUnion.c[3] = (unsigned char)0;
-    } else {*/
+    } else {
         switch(endianness) {
             case MB_ENDIANESS_LBF_LWF: // low byte first, low word first (little endian)
                 Modbus::MBUnion.c[0] = (unsigned char)buf[pos + 0];
@@ -63,7 +63,7 @@ float Modbus::combineBytes(unsigned char *buf, unsigned char pos, MBEndianess en
             default:
                 break;
         }
-   // }
+    }
 
     switch(dataType) {
       case MB_DATATYPE_INT16:
