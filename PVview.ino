@@ -22,11 +22,6 @@
 #define DATA_PIN 23
 #define CS_PIN 5
 
-// Modbus settings
-#define MB_EM 0
-#define MB_IP "192.168.1.4"
-#define MB_UNIT 1
-
 // Application settings
 #define INTERVAL 5 // seconds
 #define RETRY_AFTER 3 // times
@@ -35,8 +30,20 @@
 #define SHOW_POWER 0
 #define SHOW_ENERGY 1
 #define SHOW_TIME 2
+
 #define ON_POWER 0
 #define ALWAYS 1
+
+// Modbus settings
+#define MB_COUNT 1
+const struct {
+  unsigned char EM;
+  const char *IP;
+  unsigned char Unit;
+} MB[MB_COUNT] = {
+  // EM, IP,          Unit
+  { 0, "192.168.1.4", 1 },
+};
 
 const struct {
     unsigned char Element;
@@ -80,14 +87,13 @@ const char prefixes[] = " kMGTPEZYRQ";
 
 bool eth_connected = false;
 char message[12] = "";
-unsigned char cycle = 0, RetryAfter = RETRY_AFTER, RetryError = 0;
-unsigned int tID[2];
+unsigned char Count, cycle = 0, RetryAfter = RETRY_AFTER, RetryError = 0, Requested = 0;
 unsigned long timer = 0;
-float energy = 0, power = 0;
+float Energy = 0, Power = 0, Sum;
 
 MD_Parola P = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 
-Modbus M = Modbus();
+Modbus M[MB_COUNT];
 
 WebServer server(80);
 
@@ -168,21 +174,40 @@ void printTime(){
   sprintf(message, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
 }
 
-void readModbus() {
-  unsigned int ID;
-
-  if (M.available()) {
-    M.read();
-    ID = M.getTransactionID();
-    debugD("Modbus receive ID %d", ID);
-    if (ID == tID[SHOW_POWER]) {
-      RetryError = 0;
-      power = M.getValue(EM[MB_EM].Endianness, EM[MB_EM].DataType, EM[MB_EM].PowerMultiplier);
-      debugI("Power is %0.0f", power);
+void sumModbusValue(unsigned char show, float read, float &value) {
+  if(!isnan(read) && !isinf(read)) {
+    Count++;
+    Sum += read;
+    if (Count == MB_COUNT) {
+      value = Sum;
     }
-    if (ID == tID[SHOW_ENERGY]) {
-      energy = M.getValue(EM[MB_EM].Endianness, EM[MB_EM].DataType, EM[MB_EM].EnergyMultiplier);
-      debugI("Energy is %0.0f", energy);
+  }
+}
+
+void readModbus() {
+  unsigned char MB_EM;
+  unsigned int ID;
+  float value;
+
+  for(int i = 0; i < MB_COUNT; i++) {
+    if (M[i].available()) {
+      MB_EM = MB[i].EM;
+      M[i].read();
+      switch (Requested) {
+        case SHOW_POWER:
+          value = M[i].getValue(EM[MB_EM].Endianness, EM[MB_EM].DataType, EM[MB_EM].PowerMultiplier);
+          debugI("Modbus %u receive power %0.0f", i, value);
+          sumModbusValue(SHOW_POWER, value, Power);
+          if (Count == MB_COUNT) {
+            RetryError = 0;
+          }
+          break;
+        case SHOW_ENERGY:
+          value = M[i].getValue(EM[MB_EM].Endianness, EM[MB_EM].DataType, EM[MB_EM].EnergyMultiplier);
+          debugI("Modbus %u receive energy %0.0f", i, value);
+          sumModbusValue(SHOW_ENERGY, value, Energy);
+          break;
+      }
     }
   }
 }
@@ -273,10 +298,13 @@ void setup() {
   P.setFont(PVfont);
 
   cycle = ARRAY_SIZE(Show) - 1;
+  for (int i = 0; i < MB_COUNT; i++) {
+    M[i] = Modbus();
+  }
 }
 
 void loop() {
-  unsigned char i, Element;
+  unsigned char i, j, Element, MB_EM;
 
   if (eth_connected) {
     server.handleClient();
@@ -286,7 +314,7 @@ void loop() {
       timer = millis() + (INTERVAL * 1000);
 
       if (RetryError > RETRY_ERROR) {
-        power = 0;
+        Power = 0;
       }
 
       for (i = 0; i < ARRAY_SIZE(Show); i++) {
@@ -294,7 +322,7 @@ void loop() {
         if (cycle == 0) {
           RetryAfter++;
         }
-        if (Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && power > 0)) {
+        if (Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && Power > 0)) {
           break;
         }
       }
@@ -305,21 +333,27 @@ void loop() {
         Element = Show[cycle].Element;
       }
 
-      switch (Element) {
-        case SHOW_POWER:
-          RetryAfter = 0;
-          RetryError++;
-          M.readInputRequest(MB_IP, MB_UNIT, EM[MB_EM].Function, EM[MB_EM].PowerRegister);
-          tID[Element] = M.getTransactionID();
-          debugD("Modbus request power ID %d", tID[Element]);
-          break;
-        case SHOW_ENERGY:
-          if (power || !energy) {
-            M.readInputRequest(MB_IP, MB_UNIT, EM[MB_EM].Function, EM[MB_EM].EnergyRegister);
-            tID[Element] = M.getTransactionID();
-            debugD("Modbus request energy ID %d", tID[Element]);
-          }
-          break;
+      Count = 0;
+      Sum = 0;
+      Requested = Element;
+      for (i = 0; i < MB_COUNT; i++) {
+        MB_EM = MB[i].EM;
+        switch (Element) {
+          case SHOW_POWER:
+            if (i == 0) {
+              RetryAfter = 0;
+              RetryError++;
+            }
+            M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].PowerRegister);
+            debugD("Modbus %u request power", i);
+            break;
+          case SHOW_ENERGY:
+            if (Power || !Energy) {
+              M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyRegister);
+              debugD("Modbus %u request energy", i);
+            }
+            break;
+        }
       }
     }
   } else {
@@ -330,13 +364,13 @@ void loop() {
     timer = millis() + (INTERVAL * 1000) - 800;
 
     strcpy(message, "");
-    if(Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && power > 0)) {
+    if(Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && Power > 0)) {
       switch(Show[cycle].Element) {
         case SHOW_POWER:
-          printModbus(power, "W");
+          printModbus(Power, "W");
           break;
         case SHOW_ENERGY:
-          printModbus(energy, "wh");
+          printModbus(Energy, "wh");
           break;
         case SHOW_TIME:
           printTime();

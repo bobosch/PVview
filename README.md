@@ -1,7 +1,7 @@
 # PVview
 
 An Ethernet only PV display - POE powered and using Modbus TCP to get data from the inverter.
-![wESP32 with display](Controller+Display.jpg)
+![wESP32 with display](Controller+Display.gif)
 
 # Features
 
@@ -9,6 +9,7 @@ An Ethernet only PV display - POE powered and using Modbus TCP to get data from 
 - Modbus TCP
 - Automatic prefixes (W, kW, MW, ...)
 - Display cycle between power, energy and time (configurable)
+- Read multiple inverters and sum values
 - Firmware over-the-air updates (/serverIndex)
 - Debug with telnet
 
