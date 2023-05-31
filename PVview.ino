@@ -60,22 +60,33 @@ const struct {
 struct {
     unsigned char Desc[13];
     MBEndianess Endianness;
-    MBDataType DataType;
-    unsigned char Function; // 3: holding registers, 4: input registers
-    unsigned int PowerRegister; // Total power (W)
-    signed char PowerMultiplier; // 10^x
-    unsigned int EnergyRegister; // Total energy (Wh)
+    unsigned char Function;       // 3: holding registers, 4: input registers
+    MBDataType VoltageDataType;
+    unsigned int VoltageRegister; // Single phase voltage (V)
+    signed char VoltageMultiplier;// 10^x
+    MBDataType CurrentDataType;
+    unsigned int CurrentRegister; // Single phase current (A)
+    signed char CurrentMultiplier;// 10^x
+    MBDataType PowerDataType;
+    unsigned int PowerRegister;   // Total power (W)
+    signed char PowerMultiplier;  // 10^x
+    MBDataType EnergyDataType;
+    unsigned int EnergyRegister;  // Total energy (Wh)
     signed char EnergyMultiplier; // 10^x
-} EM[8] = {
-    // Desc,         Endianness,          DataType,     Function, P_Reg,Mul, E_Reg,Mul
-    { "Fronius Symo",MB_ENDIANESS_HBF_HWF,MB_DATATYPE_FLOAT32, 3,  40091, 0,  40101, 0 },
-    { "Phoenix Cont",MB_ENDIANESS_HBF_LWF,MB_DATATYPE_INT32,   4,   0x28,-1,   0x3E, 2 }, // PHOENIX CONTACT EEM-350-D-MCB (0,1V / mA / 0,1W / 0,1kWh) max read count 11
-    { "Finder 7E",   MB_ENDIANESS_HBF_HWF,MB_DATATYPE_FLOAT32, 4, 0x1026, 0, 0x1106, 0 }, // Finder 7E.78.8.400.0212 (V / A / W / Wh) max read count 127
-    { "Eastron",     MB_ENDIANESS_HBF_HWF,MB_DATATYPE_FLOAT32, 4,   0x34, 0,  0x156, 3 }, // Eastron SDM630 (V / A / W / kWh) max read count 80
-    { "ABB",         MB_ENDIANESS_HBF_HWF,MB_DATATYPE_INT32,   3, 0x5B14,-2, 0x5002, 1 }, // ABB B23 212-100 (0.1V / 0.01A / 0.01W / 0.01kWh) RS485 wiring reversed / max read count 125
-    { "SolarEdge",   MB_ENDIANESS_HBF_HWF,MB_DATATYPE_INT16,   3,  40083, 0,  40226, 0 }, // SolarEdge SunSpec (0.01V (16bit) / 0.1A (16bit) / 1W (16bit) / 1 Wh (32bit))
-    { "WAGO",        MB_ENDIANESS_HBF_HWF,MB_DATATYPE_FLOAT32, 3, 0x5012, 3, 0x6000, 3 }, // WAGO 879-30x0 (V / A / kW / kWh)
-    { "Finder 7M",   MB_ENDIANESS_HBF_HWF,MB_DATATYPE_FLOAT32, 4,   2536, 0,   2638, 0 }, // Finder 7M.38.8.400.0212 (V / A / W / Wh) / Backlight 10173
+} EM[10] = {
+    // Desc,  Endianness, Function, U:DataType, Reg, Mul, I:DataType, Reg, Mul, P:DataType, Reg, Mul, E:DataType, Reg, Mul
+    // Modbus TCP inverter
+    { "Fronius Symo",MB_HBF_HWF, 3, MB_FLOAT32, 40085, 0, MB_FLOAT32, 40073, 0, MB_FLOAT32, 40091, 0, MB_FLOAT32, 40101, 0 },
+    { "Sungrow",     MB_HBF_LWF, 4, MB_UINT16,   5018, 0, MB_UINT16,   5021, 0, MB_UINT32,   5008, 0, MB_UINT32,   5003, 3 },
+    { "Sunny WebBox",MB_HBF_HWF, 3, MB_UINT32,  30783, 0, MB_UINT32,  30797, 0, MB_SINT32,  30775, 0, MB_UINT64,  30513, 0 }, // Unit ID 2
+    { "SolarEdge",   MB_HBF_HWF, 3, MB_SINT16,  40196, 0, MB_SINT16,  40191, 0, MB_SINT16,  40083, 0, MB_SINT32,  40226, 0 }, // SolarEdge SunSpec (0.01V / 0.1A / 1W / 1 Wh)
+    // Modbus RTU electric meter
+    { "ABB",         MB_HBF_HWF, 3, MB_UINT32, 0x5B00,-1, MB_UINT32, 0x5B0C,-2, MB_SINT32, 0x5B14,-2, MB_UINT64, 0x5000, 1 }, // ABB B23 212-100 (0.1V / 0.01A / 0.01W / 0.01kWh) RS485 wiring reversed / max read count 125
+    { "Eastron",     MB_HBF_HWF, 4, MB_FLOAT32,   0x0, 0, MB_FLOAT32,   0x6, 0, MB_FLOAT32,  0x34, 0, MB_FLOAT32, 0x156, 3 }, // Eastron SDM630 (V / A / W / kWh) max read count 80
+    { "Finder 7E",   MB_HBF_HWF, 4, MB_FLOAT32,0x1000, 0, MB_FLOAT32,0x100E, 0, MB_FLOAT32,0x1026, 0, MB_FLOAT32,0x1106, 0 }, // Finder 7E.78.8.400.0212 (V / A / W / Wh) max read count 127
+    { "Finder 7M",   MB_HBF_HWF, 4, MB_FLOAT32,  2500, 0, MB_FLOAT32,  2516, 0, MB_FLOAT32,  2536, 0, MB_FLOAT32,  2638, 0 }, // Finder 7M.38.8.400.0212 (V / A / W / Wh) / Backlight 10173
+    { "Phoenix Cont",MB_HBF_LWF, 4, MB_SINT32,    0x0,-1, MB_SINT32,    0xC,-3, MB_SINT32,   0x28,-1, MB_SINT32,   0x3E, 2 }, // PHOENIX CONTACT EEM-350-D-MCB (0,1V / mA / 0,1W / 0,1kWh) max read count 11
+    { "WAGO",        MB_HBF_HWF, 3, MB_FLOAT32,0x5002, 0, MB_FLOAT32,0x500C, 0, MB_FLOAT32,0x5012, 3, MB_FLOAT32,0x6000, 3 }, // WAGO 879-30x0 (V / A / kW / kWh)
 };
 
 // Time
@@ -195,7 +206,7 @@ void readModbus() {
       M[i].read();
       switch (Requested) {
         case SHOW_POWER:
-          value = M[i].getValue(EM[MB_EM].Endianness, EM[MB_EM].DataType, EM[MB_EM].PowerMultiplier);
+          value = M[i].getValue(EM[MB_EM].Endianness, EM[MB_EM].PowerDataType, EM[MB_EM].PowerMultiplier);
           debugI("Modbus %u receive power %0.0f", i, value);
           sumModbusValue(SHOW_POWER, value, Power);
           if (Count == MB_COUNT) {
@@ -203,7 +214,7 @@ void readModbus() {
           }
           break;
         case SHOW_ENERGY:
-          value = M[i].getValue(EM[MB_EM].Endianness, EM[MB_EM].DataType, EM[MB_EM].EnergyMultiplier);
+          value = M[i].getValue(EM[MB_EM].Endianness, EM[MB_EM].EnergyDataType, EM[MB_EM].EnergyMultiplier);
           debugI("Modbus %u receive energy %0.0f", i, value);
           sumModbusValue(SHOW_ENERGY, value, Energy);
           break;
@@ -344,12 +355,12 @@ void loop() {
               RetryAfter = 0;
               RetryError++;
             }
-            M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].PowerRegister);
+            M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].PowerRegister, M[i].getDataTypeLength(EM[MB_EM].PowerDataType) / 2);
             debugD("Modbus %u request power", i);
             break;
           case SHOW_ENERGY:
             if (Power || !Energy) {
-              M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyRegister);
+              M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDataType) / 2);
               debugD("Modbus %u request energy", i);
             }
             break;

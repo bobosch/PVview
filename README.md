@@ -13,6 +13,20 @@ An Ethernet only PV display - POE powered and using Modbus TCP to get data from 
 - Firmware over-the-air updates (/serverIndex)
 - Debug with telnet
 
+## Supported devices
+
+- Modbus TCP inverter
+  - Fronius Symo
+  - Sungrow
+  - Sunny WebBox
+- Modbus RTU electric meter (over Modbus TCP gateway)
+  - ABB B23 212-100
+  - Eastron SDM630
+  - Finder 7E.78.8.400.0212
+  - Finder 7M.38.8.400.0212
+  - PHOENIX CONTACT EEM-350-D-MCB
+  - WAGO 879-30x0
+
 # Components
 
 - Board - [wESP32](https://wesp32.com/)
@@ -28,7 +42,6 @@ An Ethernet only PV display - POE powered and using Modbus TCP to get data from 
 
 # ToDo
 
-- Toggle between power and energy
 - Sleep at night (the ESP32...)
 - Support multiple lines
 - Web interface
