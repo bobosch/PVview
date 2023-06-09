@@ -322,17 +322,23 @@ void setup() {
 void loop() {
   unsigned char i, j, Element, MB_EM;
 
+  // Only on ethernet connection
   if (eth_connected) {
+    // Handle http connection
     server.handleClient();
+    // Handle modbus response
     readModbus();
 
+    // Wait INTERVAL
     if (timer < millis()) {
       timer = millis() + (INTERVAL * 1000);
 
+      // Clear power when maximum retries exceeded
       if (RetryError > RETRY_ERROR) {
         Power = 0;
       }
 
+      // Find the next element to show
       for (i = 0; i < ARRAY_SIZE(Show); i++) {
         cycle = (cycle + 1) % ARRAY_SIZE(Show);
         if (cycle == 0) {
@@ -343,12 +349,14 @@ void loop() {
         }
       }
 
+      // Request power after maximum cycles without power request
       if (RetryAfter > RETRY_AFTER) {
         Element = SHOW_POWER;
       } else {
         Element = Show[cycle].Element;
       }
 
+      // Request values from all electric meters
       Count = 0;
       Sum = 0;
       Requested = Element;
@@ -377,8 +385,10 @@ void loop() {
   }
 
   if (P.displayAnimate()) {
+    // Set timer a bit earlier for modbus request
     timer = millis() + (INTERVAL * 1000) - 800;
 
+    // Show new element
     strcpy(message, "");
     if(Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && Power > 0)) {
       switch(Show[cycle].Element) {
