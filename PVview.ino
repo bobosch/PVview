@@ -18,7 +18,9 @@
 #define MAX_DEVICES 4
 
 #if MAX_DEVICES == 4
-#include "PVfont.h"
+#include "Font8S.h"
+#else
+#include "Font8L.h"
 #endif
 
 #define CLK_PIN 18
@@ -310,7 +312,9 @@ void setup() {
   // Matrix display
   P.begin();
 #if MAX_DEVICES == 4
-  P.setFont(PVfont);
+  P.setFont(Font8S);
+#else
+  P.setFont(Font8L);
 #endif
 
   cycle = ARRAY_SIZE(Show) - 1;

@@ -1,4 +1,4 @@
-MD_MAX72XX::fontType_t PVfont[] PROGMEM = 
+MD_MAX72XX::fontType_t Font8S[] PROGMEM =
 {
 	0, 	// 0    
 	0, 	// 1    
