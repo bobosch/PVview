@@ -41,11 +41,11 @@
 #define MB_COUNT 1
 const struct {
   unsigned char EM;
-  const char *IP;
+  const char *Host;
   unsigned char Unit;
 } MB[MB_COUNT] = {
   // EM, IP,          Unit
-  { 0, "192.168.1.4", 1 },
+  { 0, "FroniusSymo15", 1 },
 };
 
 const struct {
@@ -368,12 +368,12 @@ void loop() {
               RetryAfter = 0;
               RetryError++;
             }
-            M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].PowerRegister, M[i].getDataTypeLength(EM[MB_EM].PowerDataType) / 2);
+            M[i].readInputRequest(MB[i].Host, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].PowerRegister, M[i].getDataTypeLength(EM[MB_EM].PowerDataType) / 2);
             debugD("Modbus %u request power", i);
             break;
           case SHOW_ENERGY:
             if (Power || !Energy) {
-              M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDataType) / 2);
+              M[i].readInputRequest(MB[i].Host, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDataType) / 2);
               debugD("Modbus %u request energy", i);
             }
             break;
