@@ -6,7 +6,6 @@
 
 #include <MD_MAX72xx.h>
 #include <MD_Parola.h>
-#include "PVfont.h"
 #include "modbus.h"
 #include "RemoteDebug.h"  //https://github.com/JoaoLopesF/RemoteDebug
 
@@ -17,6 +16,10 @@
 // MD Parola settings
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
 #define MAX_DEVICES 4
+
+#if MAX_DEVICES == 4
+#include "PVfont.h"
+#endif
 
 #define CLK_PIN 18
 #define DATA_PIN 23
@@ -306,7 +309,9 @@ void setup() {
 
   // Matrix display
   P.begin();
+#if MAX_DEVICES == 4
   P.setFont(PVfont);
+#endif
 
   cycle = ARRAY_SIZE(Show) - 1;
   for (int i = 0; i < MB_COUNT; i++) {
@@ -381,7 +386,11 @@ void loop() {
           printModbus(Power, "W");
           break;
         case SHOW_ENERGY:
+#if MAX_DEVICES == 4
           printModbus(Energy, "wh");
+#else
+          printModbus(Energy, "Wh");
+#endif
           break;
         case SHOW_TIME:
           printTime();
