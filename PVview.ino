@@ -228,25 +228,38 @@ void readModbus() {
   }
 }
 
-void printModbus(float value, String unit) {
+uint8_t prefixUnit(float &value, String &unit) {
   uint8_t exponent, point, thousand;
   char prefix = 32; // " "
 
   exponent = log10(value);
   point = exponent % 3;
   thousand = exponent - point;
-  if (thousand == 0) point = 3;
+  if (thousand == 0) point = 2;
   if (thousand >= 0 && thousand <= 30) prefix = prefixes[(uint8_t)(thousand / 3)];
   else prefix = 63; // "?"
+
+  value = value / pow10(thousand);
+  if (prefix != 32) unit = prefix + unit;
+
+  return point;
+}
+
+void printModbus(float value, String unit) {
+  uint8_t point, space = 32;
+
+  if (unit == "") space = 0;
+
+  point = prefixUnit(value, unit);
   switch (point) {
     case 0:
-      sprintf(message, "%1.2f %c%s", value / pow10(thousand), prefix, unit);
+      sprintf(message, "%1.2f%c%s", value, space, unit);
       break;
     case 1:
-      sprintf(message, "%2.1f %c%s", value / pow10(thousand), prefix, unit);
+      sprintf(message, "%2.1f%c%s", value, space, unit);
       break;
     default:
-      sprintf(message, "%3.0f %c%s", value / pow10(thousand), prefix, unit);
+      sprintf(message, "%3.0f%c%s", value, space, unit);
       break;
   }
 }
