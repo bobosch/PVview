@@ -15,7 +15,7 @@
 
 // MD Parola settings
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
-#define MAX_DEVICES 4
+#define MAX_DEVICES 4 // * 8 dots
 
 #if MAX_DEVICES == 4
 #include "Font8S.h"
@@ -103,7 +103,7 @@ const char prefixes[] = " kMGTPEZYRQ";
 
 bool eth_connected = false;
 char message[12] = "";
-unsigned char Count, cycle = 0, RetryAfter = RETRY_AFTER, RetryError = 0, Requested = 0;
+uint8_t Count, cycle = 0, digitsW, digitsWh, RetryAfter = RETRY_AFTER, RetryError = 0, Requested = 0;
 unsigned long timer = 0;
 float Energy = 0, Power = 0, Sum;
 
@@ -228,38 +228,51 @@ void readModbus() {
   }
 }
 
-uint8_t prefixUnit(float &value, String &unit) {
-  uint8_t exponent, point, thousand;
+uint8_t prefixUnit(float &value, String &unit, uint8_t maximumDigits) {
+  uint8_t thousand;
+  int8_t digits, exponent, point;
   char prefix = 32; // " "
 
-  exponent = log10(value);
+  // Show more digits on wider displays
+  exponent = log10(value) - (maximumDigits - 3);
+  // Get position of decimal point
   point = exponent % 3;
-  thousand = exponent - point;
-  if (thousand == 0) point = 2;
-  if (thousand >= 0 && thousand <= 30) prefix = prefixes[(uint8_t)(thousand / 3)];
+  digits = exponent - point;
+  // Don't show decimal point on smallest (default) unit
+  if (digits <= 0) {
+    digits = 0;
+    point = 2;
+  }
+  // Don't show decimal point when using more than 5 digits
+  if (maximumDigits >= 5) point = 2;
+
+  // Get prefix
+  thousand = digits / 3;
+  if (thousand >= 0 && thousand <= 10) prefix = prefixes[thousand];
   else prefix = 63; // "?"
 
-  value = value / pow10(thousand);
+  // Reduce value depending on prefix
+  value = value / pow10(digits);
   if (prefix != 32) unit = prefix + unit;
 
   return point;
 }
 
-void printModbus(float value, String unit) {
+void printModbus(float value, String unit, uint8_t maximumDigits) {
   uint8_t point, space = 32;
 
   if (unit == "") space = 0;
 
-  point = prefixUnit(value, unit);
+  point = prefixUnit(value, unit, maximumDigits);
   switch (point) {
     case 0:
-      sprintf(message, "%1.2f%c%s", value, space, unit);
+      sprintf(message, "%.2f%c%s", value, space, unit);
       break;
     case 1:
-      sprintf(message, "%2.1f%c%s", value, space, unit);
+      sprintf(message, "%.1f%c%s", value, space, unit);
       break;
     default:
-      sprintf(message, "%3.0f%c%s", value, space, unit);
+      sprintf(message, "%.0f%c%s", value, space, unit);
       break;
   }
 }
@@ -328,6 +341,13 @@ void setup() {
   P.setFont(Font8S);
 #else
   P.setFont(Font8L);
+#endif
+#if MAX_DEVICES > 5
+  digitsW = (MAX_DEVICES * 8 - P.getTextColumns("M W")) / (P.getTextColumns("8") + 1);
+  digitsWh = (MAX_DEVICES * 8 - P.getTextColumns("M Wh")) / (P.getTextColumns("8") + 1);
+#else
+  digitsW = 3;
+  digitsWh = 3;
 #endif
 
   cycle = ARRAY_SIZE(Show) - 1;
@@ -410,13 +430,13 @@ void loop() {
     if(Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && Power > 0)) {
       switch(Show[cycle].Element) {
         case SHOW_POWER:
-          printModbus(Power, "W");
+          printModbus(Power, "W", digitsW);
           break;
         case SHOW_ENERGY:
 #if MAX_DEVICES == 4
-          printModbus(Energy, "wh");
+          printModbus(Energy, "wh", digitsWh);
 #else
-          printModbus(Energy, "Wh");
+          printModbus(Energy, "Wh", digitsWh);
 #endif
           break;
         case SHOW_TIME:
