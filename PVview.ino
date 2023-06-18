@@ -16,12 +16,7 @@
 // MD Parola settings
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
 #define MAX_DEVICES 4 // * 8 dots
-
-#if MAX_DEVICES == 4
-#include "Font8S.h"
-#else
-#include "Font8L.h"
-#endif
+#define LINES 1
 
 #define CLK_PIN 18
 #define DATA_PIN 23
@@ -61,6 +56,19 @@ const struct {
   { SHOW_ENERGY, ALWAYS,   PA_RIGHT },
   { SHOW_TIME,   ALWAYS,   PA_CENTER },
 };
+
+#if MAX_DEVICES == 6
+#if LINES == 2
+#define SPLIT_LINE
+#include "Font8S.h"
+#endif
+#endif
+
+#if MAX_DEVICES == 4
+#include "Font8S.h"
+#else
+#include "Font8L.h"
+#endif
 
 struct {
     unsigned char Desc[13];
@@ -102,7 +110,7 @@ const int   daylightOffset_sec = 3600;
 const char prefixes[] = " kMGTPEZYRQ";
 
 bool eth_connected = false;
-char message[12] = "";
+char message[LINES][12];
 uint8_t Count, cycle = 0, digitsW, digitsWh, RetryAfter = RETRY_AFTER, RetryError = 0, Requested = 0;
 unsigned long timer = 0;
 float Energy = 0, Power = 0, Sum;
@@ -181,13 +189,13 @@ void WiFiEvent(WiFiEvent_t event) {
   }
 }
 
-void printTime(){
+void printTime(char *str){
   struct tm timeinfo;
   if(!getLocalTime(&timeinfo)){
     return;
   }
 
-  sprintf(message, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
+  sprintf(str, "%d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
 }
 
 void sumModbusValue(unsigned char show, float read, float &value) {
@@ -258,7 +266,7 @@ uint8_t prefixUnit(float &value, String &unit, uint8_t maximumDigits) {
   return point;
 }
 
-void printModbus(float value, String unit, uint8_t maximumDigits) {
+void printModbus(char *str, float value, String unit, uint8_t maximumDigits) {
   uint8_t point, space = 32;
 
   if (unit == "") space = 0;
@@ -266,13 +274,13 @@ void printModbus(float value, String unit, uint8_t maximumDigits) {
   point = prefixUnit(value, unit, maximumDigits);
   switch (point) {
     case 0:
-      sprintf(message, "%.2f%c%s", value, space, unit);
+      sprintf(str, "%.2f%c%s", value, space, unit);
       break;
     case 1:
-      sprintf(message, "%.1f%c%s", value, space, unit);
+      sprintf(str, "%.1f%c%s", value, space, unit);
       break;
     default:
-      sprintf(message, "%.0f%c%s", value, space, unit);
+      sprintf(str, "%.0f%c%s", value, space, unit);
       break;
   }
 }
@@ -336,7 +344,8 @@ void setup() {
   Debug.setResetCmdEnabled(true);
 
   // Matrix display
-  P.begin();
+  P.begin(LINES);
+
 #if MAX_DEVICES == 4
   P.setFont(Font8S);
 #else
@@ -350,14 +359,25 @@ void setup() {
   digitsWh = 3;
 #endif
 
+#ifdef SPLIT_LINE
+  P.setZone(0, 0, 2);
+  P.setFont(0, Font8S);
+  P.setZone(1, 3, 5);
+  P.setFont(1, Font8L);
+#endif
+
   cycle = ARRAY_SIZE(Show) - 1;
-  for (int i = 0; i < MB_COUNT; i++) {
+  for (uint8_t i = 0; i < MB_COUNT; i++) {
     M[i] = Modbus();
   }
 }
 
 void loop() {
-  unsigned char i, j, Element, MB_EM;
+  uint8_t i, j, Element, MB_EM;
+#ifdef SPLIT_LINE
+  float value;
+  String unit;
+#endif
 
   // Only on ethernet connection
   if (eth_connected) {
@@ -418,7 +438,7 @@ void loop() {
       }
     }
   } else {
-    strcpy(message, "No ETH");
+    strcpy(message[0], "No ETH");
   }
 
   if (P.displayAnimate()) {
@@ -426,28 +446,54 @@ void loop() {
     timer = millis() + (INTERVAL * 1000) - 800;
 
     // Show new element
-    strcpy(message, "");
+    strcpy(message[0], "");
+#ifdef SPLIT_LINE
+    strcpy(message[1], "");
+    unit = "";
+#endif
     if(Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && Power > 0)) {
       switch(Show[cycle].Element) {
+#ifdef SPLIT_LINE
         case SHOW_POWER:
-          printModbus(Power, "W", digitsW);
+          value = Power;
+          unit = "W";
+          break;
+        case SHOW_ENERGY:
+          value = Energy;
+          unit = "Wh";
+          break;
+#else
+        case SHOW_POWER:
+          printModbus(message[0], Power, "W", digitsW);
           break;
         case SHOW_ENERGY:
 #if MAX_DEVICES == 4
-          printModbus(Energy, "wh", digitsWh);
+          printModbus(message[0], Energy, "wh", digitsWh);
 #else
-          printModbus(Energy, "Wh", digitsWh);
+          printModbus(message[0], Energy, "Wh", digitsWh);
 #endif
           break;
+#endif
         case SHOW_TIME:
-          printTime();
+          printTime(message[0]);
           break;
       }
     }
 
-    //P.print(message);
-    debugV("Display: %s", message);
-    P.displayText(message, Show[cycle].Align, 0, INTERVAL * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
+#ifdef SPLIT_LINE
+    if (unit != "") {
+      printModbus(message[0], value, "", 4);
+      prefixUnit(value, unit, 4);
+      sprintf(message[1], "%s", unit);
+    }
+    debugV("Display line 0: %s", message[0]);
+    P.displayZoneText(0, message[0], Show[cycle].Align, 0, INTERVAL * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
+    debugV("Display line 1: %s", message[1]);
+    P.displayZoneText(1, message[1], Show[cycle].Align, 0, INTERVAL * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
+#else
+    debugV("Display: %s", message[0]);
+    P.displayText(message[0], Show[cycle].Align, 0, INTERVAL * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
+#endif
   }
 
   Debug.handle();
