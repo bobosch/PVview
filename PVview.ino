@@ -213,7 +213,7 @@ void readModbus() {
   unsigned int ID;
   float value;
 
-  for(int i = 0; i < MB_COUNT; i++) {
+  for(uint8_t i = 0; i < MB_COUNT; i++) {
     if (M[i].available()) {
       MB_EM = MB[i].EM;
       M[i].read();
@@ -446,9 +446,8 @@ void loop() {
     timer = millis() + (INTERVAL * 1000) - 800;
 
     // Show new element
-    strcpy(message[0], "");
+    for(i = 0; i < LINES; i++) strcpy(message[i], "");
 #ifdef SPLIT_LINE
-    strcpy(message[1], "");
     unit = "";
 #endif
     if(Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && Power > 0)) {
@@ -486,14 +485,11 @@ void loop() {
       prefixUnit(value, unit, 4);
       sprintf(message[1], "%s", unit);
     }
-    debugV("Display line 0: %s", message[0]);
-    P.displayZoneText(0, message[0], Show[cycle].Align, 0, INTERVAL * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
-    debugV("Display line 1: %s", message[1]);
-    P.displayZoneText(1, message[1], Show[cycle].Align, 0, INTERVAL * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
-#else
-    debugV("Display: %s", message[0]);
-    P.displayText(message[0], Show[cycle].Align, 0, INTERVAL * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
 #endif
+    for(i = 0; i < LINES; i++) {
+      debugV("Display line %u: %s", i, message[i]);
+      P.displayZoneText(i, message[i], Show[cycle].Align, 0, INTERVAL * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
+    }
   }
 
   Debug.handle();
