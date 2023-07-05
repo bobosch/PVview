@@ -45,6 +45,8 @@ const struct {
   { 0, "FroniusSymo15", 1 },
 };
 
+const float AddEnergy = 0;
+
 const struct {
     unsigned char Element;
     unsigned char When;
@@ -220,7 +222,7 @@ void readModbus() {
       switch (Requested) {
         case SHOW_POWER:
           value = M[i].getValue(EM[MB_EM].Endianness, EM[MB_EM].PowerDataType, EM[MB_EM].PowerMultiplier);
-          debugI("Modbus %u receive power %0.0f", i, value);
+          debugI("Modbus %u receive power %0.0f W", i, value);
           sumModbusValue(SHOW_POWER, value, Power);
           if (Count == MB_COUNT) {
             RetryError = 0;
@@ -228,8 +230,12 @@ void readModbus() {
           break;
         case SHOW_ENERGY:
           value = M[i].getValue(EM[MB_EM].Endianness, EM[MB_EM].EnergyDataType, EM[MB_EM].EnergyMultiplier);
-          debugI("Modbus %u receive energy %0.0f", i, value);
+          debugI("Modbus %u receive energy %0.0f Wh", i, value);
           sumModbusValue(SHOW_ENERGY, value, Energy);
+          if (Count == MB_COUNT) {
+            debugI("Add constant energy %0.0f Wh", AddEnergy);
+            Energy += AddEnergy;
+          }
           break;
       }
     }
