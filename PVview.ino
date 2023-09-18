@@ -7,7 +7,8 @@
 #include <MD_MAX72xx.h>
 #include <MD_Parola.h>
 #include "modbus.h"
-#include "RemoteDebug.h"  //https://github.com/JoaoLopesF/RemoteDebug
+#include "RemoteDebug.h" // https://github.com/JoaoLopesF/RemoteDebug
+#include <Preferences.h> // https://randomnerdtutorials.com/esp32-save-data-permanently-preferences/
 
 // Network settings
 #define HOSTNAME "wESP32"
@@ -44,8 +45,6 @@ const struct {
   // EM, IP,          Unit
   { 0, "FroniusSymo15", 1 },
 };
-
-const float AddEnergy = 0;
 
 const struct {
     unsigned char Element;
@@ -115,7 +114,9 @@ bool eth_connected = false;
 char message[LINES][12];
 uint8_t Count, cycle = 0, digitsW, digitsWh, RetryAfter = RETRY_AFTER, RetryError = 0, Requested = 0;
 unsigned long timer = 0;
-float Energy = 0, Power = 0, Sum;
+float AddEnergy, Energy = 0, Power = 0, Sum;
+
+Preferences preferences;
 
 MD_Parola P = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 
@@ -168,6 +169,26 @@ void handleRoot() {
 }
 void handleNotFound() {
   server.send(404, "text/plain", String("No ") + server.uri() + " here!\n");
+}
+void handleSettings() {
+  String Send = server.arg("Send");
+  if (Send == "1") {
+    // AddEnergy
+    AddEnergy = server.arg("AddEnergy").toFloat() * 1000;
+    debugD("New AddEnergy %0.0f Wh", AddEnergy);
+    preferences.putFloat("AddEnergy", AddEnergy);
+    // Saved
+    debugI("Settings saved");
+  }
+  server.send(200, "text/html",
+  "<html><body>"
+  "<form method='POST' action='#' enctype='multipart/form-data'>"
+  "  <label for='AddEnergy'>Add constant energy (kWh)</label>"
+  "  <input type='text' name='AddEnergy' value='" + String(AddEnergy / 1000) + "'/>"
+  "  <input type='hidden' name='Send' value='1' />"
+  "  <input type='submit' value='Save' />"
+  "</form>"
+  "</body></html>");
 }
 
 void WiFiEvent(WiFiEvent_t event) {
@@ -292,6 +313,10 @@ void printModbus(char *str, float value, String unit, uint8_t maximumDigits) {
 }
 
 void setup() {
+  // Load preferences
+  preferences.begin("PVview", false);
+  AddEnergy = preferences.getFloat("AddEnergy", 0);
+
   WiFi.onEvent(WiFiEvent);
 
   // Start the Ethernet, revision 7+ uses RTL8201
@@ -337,6 +362,9 @@ void setup() {
       }
     }
   });
+
+  // Preferences
+  server.on("/settings", handleSettings);
 
   // Start the Ethernet web server
   server.begin();
