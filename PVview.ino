@@ -10,8 +10,6 @@
 #include "RemoteDebug.h" // https://github.com/JoaoLopesF/RemoteDebug
 #include <Preferences.h> // https://randomnerdtutorials.com/esp32-save-data-permanently-preferences/
 
-// Network settings
-#define HOSTNAME "wESP32"
 //#define DEBUG_DISABLED
 
 // MD Parola settings
@@ -115,6 +113,7 @@ char message[LINES][12];
 uint8_t Count, cycle = 0, digitsW, digitsWh, RetryAfter = RETRY_AFTER, RetryError = 0, Requested = 0;
 unsigned long timer = 0;
 float AddEnergy, Energy = 0, Power = 0, Sum;
+String Hostname;
 
 Preferences preferences;
 
@@ -173,28 +172,40 @@ void handleNotFound() {
 void handleSettings() {
   String Send = server.arg("Send");
   if (Send == "1") {
+    // Save preferences
+    preferences.begin("PVview", false);
+    // Hostname
+    Hostname = server.arg("Hostname");
+    debugD("New Hostname %s", Hostname);
+    preferences.putString("Hostname", Hostname);
     // AddEnergy
     AddEnergy = server.arg("AddEnergy").toFloat() * 1000;
     debugD("New AddEnergy %0.0f Wh", AddEnergy);
     preferences.putFloat("AddEnergy", AddEnergy);
     // Saved
     debugI("Settings saved");
+    preferences.end();
   }
   server.send(200, "text/html",
-  "<html><body>"
-  "<form method='POST' action='#' enctype='multipart/form-data'>"
-  "  <label for='AddEnergy'>Add constant energy (kWh)</label>"
-  "  <input type='text' name='AddEnergy' value='" + String(AddEnergy / 1000) + "'/>"
-  "  <input type='hidden' name='Send' value='1' />"
-  "  <input type='submit' value='Save' />"
-  "</form>"
-  "</body></html>");
+  "<html>"
+  "<head><style>"
+  " form {}"
+  " div { margin: 2px 0; }"
+  " label { float: left; width: 160px; }"
+  " input {}"
+  "</style></head>"
+  "<body><form method='POST' action='#' enctype='multipart/form-data'>"
+  " <div><label for='Hostname'>Hostname</label><input type='text' name='Hostname' value='" + Hostname + "'/></div>"
+  " <div><label for='AddEnergy'>Add constant energy (kWh)</label><input type='text' name='AddEnergy' value='" + String(AddEnergy / 1000) + "'/></div>"
+  " <div><input type='hidden' name='Send' value='1' /><input type='submit' value='Save' /></div>"
+  "</form></body>"
+  "</html>");
 }
 
 void WiFiEvent(WiFiEvent_t event) {
   switch (event) {
     case ARDUINO_EVENT_ETH_START:
-      ETH.setHostname(HOSTNAME);
+      ETH.setHostname(Hostname.c_str());
       break;
     case ARDUINO_EVENT_ETH_CONNECTED:
       break;
@@ -314,8 +325,10 @@ void printModbus(char *str, float value, String unit, uint8_t maximumDigits) {
 
 void setup() {
   // Load preferences
-  preferences.begin("PVview", false);
+  preferences.begin("PVview", true);
+  Hostname = preferences.getString("Hostname", "wESP32");
   AddEnergy = preferences.getFloat("AddEnergy", 0);
+  preferences.end();
 
   WiFi.onEvent(WiFiEvent);
 
@@ -373,7 +386,7 @@ void setup() {
   MDNS.addService("http", "tcp", 80);
 
   // Debug
-  Debug.begin(HOSTNAME, 23, 3);
+  Debug.begin(Hostname, 23, 3);
   Debug.showColors(true);
   Debug.setResetCmdEnabled(true);
 
