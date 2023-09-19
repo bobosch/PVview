@@ -102,7 +102,6 @@ struct {
 };
 
 // Time
-const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 3600;
 const int   daylightOffset_sec = 3600;
 
@@ -113,7 +112,7 @@ char message[LINES][12];
 uint8_t Count, cycle = 0, digitsW, digitsWh, RetryAfter = RETRY_AFTER, RetryError = 0, Requested = 0;
 unsigned long timer = 0;
 float AddEnergy, Energy = 0, Power = 0, Sum;
-String Hostname;
+String Hostname, NTPServer;
 
 Preferences preferences;
 
@@ -178,6 +177,10 @@ void handleSettings() {
     Hostname = server.arg("Hostname");
     debugD("New Hostname %s", Hostname);
     preferences.putString("Hostname", Hostname);
+    // NTPServer
+    NTPServer = server.arg("NTPServer");
+    debugD("New NTPServer %s", NTPServer);
+    preferences.putString("NTPServer", NTPServer);
     // AddEnergy
     AddEnergy = server.arg("AddEnergy").toFloat() * 1000;
     debugD("New AddEnergy %0.0f Wh", AddEnergy);
@@ -196,6 +199,7 @@ void handleSettings() {
   "</style></head>"
   "<body><form method='POST' action='#' enctype='multipart/form-data'>"
   " <div><label for='Hostname'>Hostname</label><input type='text' name='Hostname' value='" + Hostname + "'/></div>"
+  " <div><label for='NTPServer'>NTPServer</label><input type='text' name='NTPServer' value='" + NTPServer + "'/></div>"
   " <div><label for='AddEnergy'>Add constant energy (kWh)</label><input type='text' name='AddEnergy' value='" + String(AddEnergy / 1000) + "'/></div>"
   " <div><input type='hidden' name='Send' value='1' /><input type='submit' value='Save' /></div>"
   "</form></body>"
@@ -327,6 +331,7 @@ void setup() {
   // Load preferences
   preferences.begin("PVview", true);
   Hostname = preferences.getString("Hostname", "wESP32");
+  NTPServer = preferences.getString("NTPServer", "pool.ntp.org");
   AddEnergy = preferences.getFloat("AddEnergy", 0);
   preferences.end();
 
@@ -336,7 +341,7 @@ void setup() {
   ETH.begin(0, -1, 16, 17, ETH_PHY_RTL8201);
 
   // Init and get the time
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  configTime(gmtOffset_sec, daylightOffset_sec, NTPServer.c_str());
 
   // You can browse to wesp32demo.local with this
   MDNS.begin("wesp32demo");
