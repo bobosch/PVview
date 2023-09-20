@@ -22,10 +22,6 @@
 #define CS_PIN 5
 
 // Application settings
-#define INTERVAL 5 // seconds
-#define RETRY_AFTER 3 // times
-#define RETRY_ERROR 3 // times
-
 #define SHOW_POWER 0
 #define SHOW_ENERGY 1
 #define SHOW_TIME 2
@@ -109,7 +105,7 @@ const char prefixes[] = " kMGTPEZYRQ";
 
 bool eth_connected = false;
 char message[LINES][12];
-uint8_t Count, cycle = 0, digitsW, digitsWh, RetryAfter = RETRY_AFTER, RetryError = 0, Requested = 0;
+uint8_t Count, cycle = 0, digitsW, digitsWh, Interval, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Requested = 0;
 unsigned long timer = 0;
 float AddEnergy, Energy = 0, Power = 0, Sum;
 String Hostname, NTPServer;
@@ -181,6 +177,18 @@ void handleSettings() {
     NTPServer = server.arg("NTPServer");
     debugD("New NTPServer %s", NTPServer);
     preferences.putString("NTPServer", NTPServer);
+    // Interval
+    Interval = server.arg("Interval").toInt();
+    debugD("New Interval %u s", Interval);
+    preferences.putUChar("Interval", Interval);
+    // RetryAfter
+    RetryAfter = server.arg("RetryAfter").toInt();
+    debugD("New RetryAfter %u", RetryAfter);
+    preferences.putUChar("RetryAfter", RetryAfter);
+    // RetryError
+    RetryError = server.arg("RetryError").toInt();
+    debugD("New RetryError %u", RetryError);
+    preferences.putUChar("RetryError", RetryError);
     // AddEnergy
     AddEnergy = server.arg("AddEnergy").toFloat() * 1000;
     debugD("New AddEnergy %0.0f Wh", AddEnergy);
@@ -193,14 +201,22 @@ void handleSettings() {
   "<html>"
   "<head><style>"
   " form {}"
-  " div { margin: 2px 0; }"
-  " label { float: left; width: 160px; }"
-  " input {}"
+  " div { clear: both; }"
+  " label { float: left; margin: 4px 0; width: 160px; }"
+  " input { margin: 4px 0; }"
   "</style></head>"
   "<body><form method='POST' action='#' enctype='multipart/form-data'>"
+  " <fieldset><legend>Network</legend>"
+  " <em>Changes requires a reboot to take effect</em>"
   " <div><label for='Hostname'>Hostname</label><input type='text' name='Hostname' value='" + Hostname + "'/></div>"
   " <div><label for='NTPServer'>NTPServer</label><input type='text' name='NTPServer' value='" + NTPServer + "'/></div>"
+  " </fieldset>"
+  " <fieldset><legend>Display</legend>"
+  " <div><label for='Interval'>Cycle after (s)</label><input type='text' name='Interval' value='" + String(Interval) + "'/></div>"
+  " <div><label for='RetryAfter'>Maximum cycles without power request</label><input type='text' name='RetryAfter' value='" + String(RetryAfter) + "'/></div>"
+  " <div><label for='RetryError'>Minimum cycles with error before clear power value</label><input type='text' name='RetryError' value='" + String(RetryError) + "'/></div>"
   " <div><label for='AddEnergy'>Add constant energy (kWh)</label><input type='text' name='AddEnergy' value='" + String(AddEnergy / 1000) + "'/></div>"
+  " </fieldset>"
   " <div><input type='hidden' name='Send' value='1' /><input type='submit' value='Save' /></div>"
   "</form></body>"
   "</html>");
@@ -261,7 +277,7 @@ void readModbus() {
           debugI("Modbus %u receive power %0.0f W", i, value);
           sumModbusValue(SHOW_POWER, value, Power);
           if (Count == MB_COUNT) {
-            RetryError = 0;
+            RetryErrorCount = 0;
           }
           break;
         case SHOW_ENERGY:
@@ -332,8 +348,12 @@ void setup() {
   preferences.begin("PVview", true);
   Hostname = preferences.getString("Hostname", "wESP32");
   NTPServer = preferences.getString("NTPServer", "pool.ntp.org");
+  Interval = preferences.getUChar("Interval", 5);
+  RetryAfter = preferences.getUChar("RetryAfter", 3);
+  RetryError = preferences.getUChar("RetryError", 3);
   AddEnergy = preferences.getFloat("AddEnergy", 0);
   preferences.end();
+  RetryAfterCount = RetryAfter;
 
   WiFi.onEvent(WiFiEvent);
 
@@ -440,10 +460,10 @@ void loop() {
 
     // Wait INTERVAL
     if (timer < millis()) {
-      timer = millis() + (INTERVAL * 1000);
+      timer = millis() + ((uint16_t)Interval * 1000);
 
       // Clear power when maximum retries exceeded
-      if (RetryError > RETRY_ERROR) {
+      if (RetryErrorCount > RetryError) {
         Power = 0;
       }
 
@@ -451,7 +471,7 @@ void loop() {
       for (i = 0; i < ARRAY_SIZE(Show); i++) {
         cycle = (cycle + 1) % ARRAY_SIZE(Show);
         if (cycle == 0) {
-          RetryAfter++;
+          RetryAfterCount++;
         }
         if (Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && Power > 0)) {
           break;
@@ -459,7 +479,7 @@ void loop() {
       }
 
       // Request power after maximum cycles without power request
-      if (RetryAfter > RETRY_AFTER) {
+      if (RetryAfterCount > RetryAfter) {
         Element = SHOW_POWER;
       } else {
         Element = Show[cycle].Element;
@@ -474,8 +494,8 @@ void loop() {
         switch (Element) {
           case SHOW_POWER:
             if (i == 0) {
-              RetryAfter = 0;
-              RetryError++;
+              RetryAfterCount = 0;
+              RetryErrorCount++;
             }
             M[i].readInputRequest(MB[i].Host, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].PowerRegister, M[i].getDataTypeLength(EM[MB_EM].PowerDataType) / 2);
             debugD("Modbus %u request power", i);
@@ -495,7 +515,7 @@ void loop() {
 
   if (P.displayAnimate()) {
     // Set timer a bit earlier for modbus request
-    timer = millis() + (INTERVAL * 1000) - 800;
+    timer = millis() + ((uint16_t)Interval * 1000) - 800;
 
     // Show new element
     for(i = 0; i < LINES; i++) strcpy(message[i], "");
@@ -540,7 +560,7 @@ void loop() {
 #endif
     for(i = 0; i < LINES; i++) {
       debugV("Display line %u: %s", i, message[i]);
-      P.displayZoneText(i, message[i], Show[cycle].Align, 0, INTERVAL * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
+      P.displayZoneText(i, message[i], Show[cycle].Align, 0, (uint16_t)Interval * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
     }
   }
 
