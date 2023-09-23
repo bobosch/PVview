@@ -10,6 +10,7 @@ An Ethernet only PV display - POE powered and using Modbus TCP to get data from 
 - Automatic prefixes (W, kW, MW, ...)
 - Display cycle between power, energy and time (configurable)
 - Read multiple inverters and sum values
+- Web interface
 - Firmware over-the-air updates (/serverIndex)
 - Debug with telnet
 
@@ -44,4 +45,3 @@ An Ethernet only PV display - POE powered and using Modbus TCP to get data from 
 
 - Sleep at night (the ESP32...)
 - Support multiple lines
-- Web interface

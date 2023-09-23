@@ -25,9 +25,17 @@
 #define SHOW_POWER 0
 #define SHOW_ENERGY 1
 #define SHOW_TIME 2
+const String NameElement[3] = { "Power", "Energy", "Time" };
 
 #define ON_POWER 0
 #define ALWAYS 1
+const String NameWhen[2] = { "On power", "Always" };
+
+#define LEFT 0
+#define CENTER 1
+#define RIGHT 2
+const String NameAlign[3] = { "Left", "Center", "Right" };
+const textPosition_t Align[3] = { PA_LEFT, PA_CENTER, PA_RIGHT };
 
 // Modbus settings
 #define MB_COUNT 1
@@ -40,16 +48,16 @@ const struct {
   { 0, "FroniusSymo15", 1 },
 };
 
-const struct {
-    unsigned char Element;
-    unsigned char When;
-    textPosition_t Align;
+struct {
+    uint8_t Element;
+    uint8_t When;
+    uint8_t Align;
 // Modify this array to your needs
 } Show[3] = {
   // Element,    When,     Align
-  { SHOW_POWER,  ON_POWER, PA_RIGHT },
-  { SHOW_ENERGY, ALWAYS,   PA_RIGHT },
-  { SHOW_TIME,   ALWAYS,   PA_CENTER },
+  { SHOW_POWER,  ON_POWER, RIGHT },
+  { SHOW_ENERGY, ALWAYS,   RIGHT },
+  { SHOW_TIME,   ALWAYS,   CENTER },
 };
 
 #if MAX_DEVICES == 6
@@ -157,6 +165,18 @@ const char* serverIndex =
  "});"
  "</script>";
 
+String htmlSelect(String Name, const String Options[], uint8_t OptionsSize, uint8_t Selected) {
+  uint8_t i;
+  String ret = "<select name='" + Name + "' size='1'>";
+  for (i = 0; i < OptionsSize; i++) {
+    ret += "<option value='" + String(i) + "'";
+    if (i == Selected) ret += " selected";
+    ret += ">" + Options[i] + "</option>";
+  }
+  ret += "</select>";
+  return ret;
+}
+
 // HTTP handlers
 void handleRoot() {
   server.send(200, "text/plain", "Hello from wESP32!\n");
@@ -165,6 +185,10 @@ void handleNotFound() {
   server.send(404, "text/plain", String("No ") + server.uri() + " here!\n");
 }
 void handleSettings() {
+  uint8_t edit,i;
+  String TableShow = "";
+
+  // Save settings
   String Send = server.arg("Send");
   if (Send == "1") {
     // Save preferences
@@ -197,6 +221,27 @@ void handleSettings() {
     debugI("Settings saved");
     preferences.end();
   }
+
+  edit = server.arg("edit").toInt();
+  if (edit > 3) edit = 0;
+  if (server.arg("Show") == "Save") {
+    Show[edit - 1].Element = server.arg("ShowElement").toInt();
+    Show[edit - 1].When = server.arg("ShowWhen").toInt();
+    Show[edit - 1].Align = server.arg("ShowAlign").toInt();
+    preferences.begin("PVview", false);
+    preferences.putBytes("Show", &Show, sizeof(Show));
+    preferences.end();
+    edit = 0;
+  }
+
+  // Generate page
+  for (i = 0; i < ARRAY_SIZE(Show); i++) {
+    if (i + 1 == edit) {
+      TableShow += "<tr><td>" + htmlSelect("ShowElement", NameElement, 3, Show[i].Element) + "</td><td>" + htmlSelect("ShowWhen", NameWhen, 2, Show[i].When) + "</td><td>" + htmlSelect("ShowAlign", NameAlign, 3, Show[i].Align) + "</td><td><input type='hidden' name='edit' value='" + String(i + 1) + "' /><input type='submit' name='Show' value='Save' /></td></tr>";
+    } else {
+      TableShow += "<tr><td>" + NameElement[Show[i].Element] + "</td><td>" + NameWhen[Show[i].When] + "</td><td>" + NameAlign[Show[i].Align] + "</td><td><a href='?edit=" + String(i + 1) + "'>Edit</a></td></tr>";
+    }
+  }
   server.send(200, "text/html",
   "<html>"
   "<head><style>"
@@ -204,21 +249,29 @@ void handleSettings() {
   " div { clear: both; }"
   " label { float: left; margin: 4px 0; width: 160px; }"
   " input { margin: 4px 0; }"
+  " table { border-collapse: collapse; }"
+  " th, td { border: 1px solid; padding: 3px 6px; }"
   "</style></head>"
-  "<body><form method='POST' action='#' enctype='multipart/form-data'>"
+  "<body>"
+  "<form method='POST' action='/' enctype='multipart/form-data'>"
   " <fieldset><legend>Network</legend>"
   " <em>Changes requires a reboot to take effect</em>"
-  " <div><label for='Hostname'>Hostname</label><input type='text' name='Hostname' value='" + Hostname + "'/></div>"
-  " <div><label for='NTPServer'>NTPServer</label><input type='text' name='NTPServer' value='" + NTPServer + "'/></div>"
+  " <div><label for='Hostname'>Hostname</label><input type='text' id='Hostname' name='Hostname' value='" + Hostname + "'/></div>"
+  " <div><label for='NTPServer'>NTPServer</label><input type='text' id='NTPServer' name='NTPServer' value='" + NTPServer + "'/></div>"
   " </fieldset>"
   " <fieldset><legend>Display</legend>"
-  " <div><label for='Interval'>Cycle after (s)</label><input type='text' name='Interval' value='" + String(Interval) + "'/></div>"
-  " <div><label for='RetryAfter'>Maximum cycles without power request</label><input type='text' name='RetryAfter' value='" + String(RetryAfter) + "'/></div>"
-  " <div><label for='RetryError'>Minimum cycles with error before clear power value</label><input type='text' name='RetryError' value='" + String(RetryError) + "'/></div>"
-  " <div><label for='AddEnergy'>Add constant energy (kWh)</label><input type='text' name='AddEnergy' value='" + String(AddEnergy / 1000) + "'/></div>"
+  " <div><label for='Interval'>Cycle after (s)</label><input type='text' id='Interval' name='Interval' value='" + String(Interval) + "'/></div>"
+  " <div><label for='RetryAfter'>Maximum cycles without power request</label><input type='text' id='RetryAfter' name='RetryAfter' value='" + String(RetryAfter) + "'/></div>"
+  " <div><label for='RetryError'>Minimum cycles with error before clear power value</label><input type='text' id='RetryError' name='RetryError' value='" + String(RetryError) + "'/></div>"
+  " <div><label for='AddEnergy'>Add constant energy (kWh)</label><input type='text' id='AddEnergy' name='AddEnergy' value='" + String(AddEnergy / 1000) + "'/></div>"
   " </fieldset>"
   " <div><input type='hidden' name='Send' value='1' /><input type='submit' value='Save' /></div>"
-  "</form></body>"
+  "</form>"
+  "<form method='POST' action='/' enctype='multipart/form-data'>"
+  " <table><tr><th>What</th><th>When</th><th>Align</th></tr>" + TableShow + "</table>"
+  "</form>"
+  "<p><a href='/serverIndex'>Firmware update</a></p>"
+  "</body>"
   "</html>");
 }
 
@@ -352,6 +405,7 @@ void setup() {
   RetryAfter = preferences.getUChar("RetryAfter", 3);
   RetryError = preferences.getUChar("RetryError", 3);
   AddEnergy = preferences.getFloat("AddEnergy", 0);
+  preferences.getBytes("Show", &Show, sizeof(Show));
   preferences.end();
   RetryAfterCount = RetryAfter;
 
@@ -367,7 +421,7 @@ void setup() {
   MDNS.begin("wesp32demo");
 
   // Bind HTTP handler
-  server.on("/", handleRoot);
+  server.on("/", handleSettings);
   server.onNotFound(handleNotFound);
 
   // Update
@@ -560,7 +614,7 @@ void loop() {
 #endif
     for(i = 0; i < LINES; i++) {
       debugV("Display line %u: %s", i, message[i]);
-      P.displayZoneText(i, message[i], Show[cycle].Align, 0, (uint16_t)Interval * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
+      P.displayZoneText(i, message[i], Align[Show[cycle].Align], 0, (uint16_t)Interval * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
     }
   }
 
