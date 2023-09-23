@@ -185,7 +185,7 @@ void handleNotFound() {
   server.send(404, "text/plain", String("No ") + server.uri() + " here!\n");
 }
 void handleSettings() {
-  uint8_t edit,i;
+  uint8_t clear, edit, i;
   String TableShow = "";
 
   // Save settings
@@ -234,6 +234,17 @@ void handleSettings() {
     edit = 0;
   }
 
+  clear = server.arg("clear").toInt();
+  if (clear == 2) {
+    preferences.begin("PVview", false);
+    preferences.clear();
+    debugI("Factory default saved");
+    preferences.end();
+    server.sendHeader("Location", "/",true);
+    server.send(302, "text/plain", "");
+    ESP.restart();
+  }
+
   // Generate page
   for (i = 0; i < ARRAY_SIZE(Show); i++) {
     if (i + 1 == edit) {
@@ -271,6 +282,7 @@ void handleSettings() {
   " <table><tr><th>What</th><th>When</th><th>Align</th></tr>" + TableShow + "</table>"
   "</form>"
   "<p><a href='/serverIndex'>Firmware update</a></p>"
+  "<p><a href='/?clear=" + String(clear + 1) + "'>Factory reset</a> (Click two times)</p>"
   "</body>"
   "</html>");
 }
