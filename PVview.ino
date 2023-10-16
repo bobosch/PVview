@@ -38,15 +38,12 @@ const String NameAlign[3] = { "Left", "Center", "Right" };
 const textPosition_t Align[3] = { PA_LEFT, PA_CENTER, PA_RIGHT };
 
 // Modbus settings
-#define MB_COUNT 1
-const struct {
+#define MB_COUNT 5
+struct {
   unsigned char EM;
-  const char *Host;
+  IPAddress IP;
   unsigned char Unit;
-} MB[MB_COUNT] = {
-  // EM, IP,          Unit
-  { 0, "FroniusSymo15", 1 },
-};
+} MB[MB_COUNT];
 
 struct {
     uint8_t Element;
@@ -73,8 +70,8 @@ struct {
 #include "Font8L.h"
 #endif
 
-struct {
-    unsigned char Desc[13];
+const struct {
+    const char Desc[13];
     MBEndianess Endianness;
     unsigned char Function;       // 3: holding registers, 4: input registers
     MBDataType VoltageDataType;
@@ -104,6 +101,7 @@ struct {
     { "Phoenix Cont",MB_HBF_LWF, 4, MB_SINT32,    0x0,-1, MB_SINT32,    0xC,-3, MB_SINT32,   0x28,-1, MB_SINT32,   0x3E, 2 }, // PHOENIX CONTACT EEM-350-D-MCB (0,1V / mA / 0,1W / 0,1kWh) max read count 11
     { "WAGO",        MB_HBF_HWF, 3, MB_FLOAT32,0x5002, 0, MB_FLOAT32,0x500C, 0, MB_FLOAT32,0x5012, 3, MB_FLOAT32,0x6000, 3 }, // WAGO 879-30x0 (V / A / kW / kWh)
 };
+const String NameEM[10] = {"Fronius Symo", "Sungrow", "Sunny WebBox", "SolarEdge", "ABB", "Eastron", "Finder 7E", "Finder 7M", "Phoenix Cont", "WAGO"};
 
 // Time
 const long  gmtOffset_sec = 3600;
@@ -113,7 +111,7 @@ const char prefixes[] = " kMGTPEZYRQ";
 
 bool eth_connected = false;
 char message[LINES][12];
-uint8_t Count, cycle = 0, digitsW, digitsWh, Interval, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Requested = 0;
+uint8_t Count, cycle = 0, digitsW, digitsWh, Interval, MBcount, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Requested = 0;
 unsigned long timer = 0;
 float AddEnergy, Energy = 0, Power = 0, Sum;
 String Hostname, NTPServer;
@@ -185,8 +183,8 @@ void handleNotFound() {
   server.send(404, "text/plain", String("No ") + server.uri() + " here!\n");
 }
 void handleSettings() {
-  uint8_t clear, edit, i;
-  String TableShow = "";
+  uint8_t clear, MBEdit, ShowEdit, i;
+  String TableMB = "", TableShow = "";
 
   // Save settings
   String Send = server.arg("Send");
@@ -222,16 +220,39 @@ void handleSettings() {
     preferences.end();
   }
 
-  edit = server.arg("edit").toInt();
-  if (edit > 3) edit = 0;
-  if (server.arg("Show") == "Save") {
-    Show[edit - 1].Element = server.arg("ShowElement").toInt();
-    Show[edit - 1].When = server.arg("ShowWhen").toInt();
-    Show[edit - 1].Align = server.arg("ShowAlign").toInt();
+  ShowEdit = server.arg("ShowEdit").toInt();
+  if (ShowEdit > 3) ShowEdit = 0;
+  if (ShowEdit && server.arg("Show") == "Save") {
+    Show[ShowEdit - 1].Element = server.arg("ShowElement").toInt();
+    Show[ShowEdit - 1].When = server.arg("ShowWhen").toInt();
+    Show[ShowEdit - 1].Align = server.arg("ShowAlign").toInt();
     preferences.begin("PVview", false);
     preferences.putBytes("Show", &Show, sizeof(Show));
     preferences.end();
-    edit = 0;
+    ShowEdit = 0;
+  }
+
+  if (server.arg("MBNew") == "1" && MBcount < 5) MBcount++;
+  if (server.arg("MBDel") == "1" && MBcount > 0) {
+    MBcount--;
+    preferences.begin("PVview", false);
+    preferences.putUChar("MBcount", MBcount);
+    preferences.end();
+  }
+  MBEdit = server.arg("MBEdit").toInt();
+  if (MBEdit > MBcount) MBEdit = 0;
+  if (MBEdit && server.arg("MB") == "Save") {
+    MB[MBEdit - 1].EM = server.arg("MBEM").toInt();
+    MB[MBEdit - 1].IP[0] = server.arg("MBIP0").toInt();
+    MB[MBEdit - 1].IP[1] = server.arg("MBIP1").toInt();
+    MB[MBEdit - 1].IP[2] = server.arg("MBIP2").toInt();
+    MB[MBEdit - 1].IP[3] = server.arg("MBIP3").toInt();
+    MB[MBEdit - 1].Unit = server.arg("MBUnit").toInt();
+    preferences.begin("PVview", false);
+    preferences.putBytes("MB", &MB, sizeof(MB));
+    preferences.putUChar("MBcount", MBcount);
+    preferences.end();
+    MBEdit = 0;
   }
 
   clear = server.arg("clear").toInt();
@@ -247,12 +268,22 @@ void handleSettings() {
 
   // Generate page
   for (i = 0; i < ARRAY_SIZE(Show); i++) {
-    if (i + 1 == edit) {
-      TableShow += "<tr><td>" + htmlSelect("ShowElement", NameElement, 3, Show[i].Element) + "</td><td>" + htmlSelect("ShowWhen", NameWhen, 2, Show[i].When) + "</td><td>" + htmlSelect("ShowAlign", NameAlign, 3, Show[i].Align) + "</td><td><input type='hidden' name='edit' value='" + String(i + 1) + "' /><input type='submit' name='Show' value='Save' /></td></tr>";
+    if (i + 1 == ShowEdit) {
+      TableShow += "<tr><td>" + htmlSelect("ShowElement", NameElement, 3, Show[i].Element) + "</td><td>" + htmlSelect("ShowWhen", NameWhen, 2, Show[i].When) + "</td><td>" + htmlSelect("ShowAlign", NameAlign, 3, Show[i].Align) + "</td><td><input type='hidden' name='ShowEdit' value='" + String(i + 1) + "' /><input type='submit' name='Show' value='Save' /></td></tr>";
     } else {
-      TableShow += "<tr><td>" + NameElement[Show[i].Element] + "</td><td>" + NameWhen[Show[i].When] + "</td><td>" + NameAlign[Show[i].Align] + "</td><td><a href='?edit=" + String(i + 1) + "'>Edit</a></td></tr>";
+      TableShow += "<tr><td>" + NameElement[Show[i].Element] + "</td><td>" + NameWhen[Show[i].When] + "</td><td>" + NameAlign[Show[i].Align] + "</td><td><a href='?ShowEdit=" + String(i + 1) + "'>Edit</a></td></tr>";
     }
   }
+  for (i = 0; i < MBcount; i++) {
+    if (i + 1 == MBEdit) {
+      TableMB += "<tr><td>" + htmlSelect("MBEM", NameEM, 10, MB[i].EM) + "</td><td class='IP'><input type='text' name='MBIP0' value='" + MB[i].IP[0] + "'>.<input type='text' name='MBIP1' value='" + MB[i].IP[1] + "'>.<input type='text' name='MBIP2' value='" + MB[i].IP[2] + "'>.<input type='text' name='MBIP3' value='" + MB[i].IP[3] + "'></td><td><input type='text' name='MBUnit' value='" + String(MB[i].Unit) + "' /></td><td><input type='hidden' name='MBEdit' value='" + String(i + 1) + "' /><input type='submit' name='MB' value='Save' /></td></tr>";
+    } else {
+      TableMB += "<tr><td>" + String(EM[MB[i].EM].Desc) + "</td><td>" + MB[i].IP.toString() + "</td><td>" + String(MB[i].Unit) + "</td><td><a href='?MBEdit=" + String(i + 1) + "'>Edit</a>";
+      if(i + 1 == MBcount) TableMB += " <a href='?MBDel=1'>Delete</a>";
+      TableMB += "</td></tr>";
+    }
+  }
+  if (MBcount < MB_COUNT) TableMB += "<tr><td></td><td></td><td></td><td><a href='?MBNew=1'>New</a></td></tr>";
   server.send(200, "text/html",
   "<html>"
   "<head><style>"
@@ -262,6 +293,7 @@ void handleSettings() {
   " input { margin: 4px 0; }"
   " table { border-collapse: collapse; }"
   " th, td { border: 1px solid; padding: 3px 6px; }"
+  " .IP input { width:40px; }"
   "</style></head>"
   "<body>"
   "<form method='POST' action='/' enctype='multipart/form-data'>"
@@ -280,6 +312,9 @@ void handleSettings() {
   "</form>"
   "<form method='POST' action='/' enctype='multipart/form-data'>"
   " <table><tr><th>What</th><th>When</th><th>Align</th></tr>" + TableShow + "</table>"
+  "</form>"
+  "<form method='POST' action='/' enctype='multipart/form-data'>"
+  " <table><tr><th>Inverter / Electric meter</th><th>IP address</th><th>Modbus unit</th></tr>" + TableMB + "</table>"
   "</form>"
   "<p><a href='/serverIndex'>Firmware update</a></p>"
   "<p><a href='/?clear=" + String(clear + 1) + "'>Factory reset</a> (Click two times)</p>"
@@ -321,7 +356,7 @@ void sumModbusValue(unsigned char show, float read, float &value) {
   if(!isnan(read) && !isinf(read)) {
     Count++;
     Sum += read;
-    if (Count == MB_COUNT) {
+    if (Count == MBcount) {
       value = Sum;
     }
   }
@@ -332,7 +367,7 @@ void readModbus() {
   unsigned int ID;
   float value;
 
-  for(uint8_t i = 0; i < MB_COUNT; i++) {
+  for(uint8_t i = 0; i < MBcount; i++) {
     if (M[i].available()) {
       MB_EM = MB[i].EM;
       M[i].read();
@@ -341,7 +376,7 @@ void readModbus() {
           value = M[i].getValue(EM[MB_EM].Endianness, EM[MB_EM].PowerDataType, EM[MB_EM].PowerMultiplier);
           debugI("Modbus %u receive power %0.0f W", i, value);
           sumModbusValue(SHOW_POWER, value, Power);
-          if (Count == MB_COUNT) {
+          if (Count == MBcount) {
             RetryErrorCount = 0;
           }
           break;
@@ -349,7 +384,7 @@ void readModbus() {
           value = M[i].getValue(EM[MB_EM].Endianness, EM[MB_EM].EnergyDataType, EM[MB_EM].EnergyMultiplier);
           debugI("Modbus %u receive energy %0.0f Wh", i, value);
           sumModbusValue(SHOW_ENERGY, value, Energy);
-          if (Count == MB_COUNT) {
+          if (Count == MBcount) {
             debugI("Add constant energy %0.0f Wh", AddEnergy);
             Energy += AddEnergy;
           }
@@ -418,6 +453,8 @@ void setup() {
   RetryError = preferences.getUChar("RetryError", 3);
   AddEnergy = preferences.getFloat("AddEnergy", 0);
   preferences.getBytes("Show", &Show, sizeof(Show));
+  preferences.getBytes("MB", &MB, sizeof(MB));
+  MBcount = preferences.getUChar("MBcount", 0);
   preferences.end();
   RetryAfterCount = RetryAfter;
 
@@ -555,7 +592,7 @@ void loop() {
       Count = 0;
       Sum = 0;
       Requested = Element;
-      for (i = 0; i < MB_COUNT; i++) {
+      for (i = 0; i < MBcount; i++) {
         MB_EM = MB[i].EM;
         switch (Element) {
           case SHOW_POWER:
@@ -563,12 +600,12 @@ void loop() {
               RetryAfterCount = 0;
               RetryErrorCount++;
             }
-            M[i].readInputRequest(MB[i].Host, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].PowerRegister, M[i].getDataTypeLength(EM[MB_EM].PowerDataType) / 2);
+            M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].PowerRegister, M[i].getDataTypeLength(EM[MB_EM].PowerDataType) / 2);
             debugD("Modbus %u request power", i);
             break;
           case SHOW_ENERGY:
             if (Power || !Energy) {
-              M[i].readInputRequest(MB[i].Host, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDataType) / 2);
+              M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDataType) / 2);
               debugD("Modbus %u request energy", i);
             }
             break;

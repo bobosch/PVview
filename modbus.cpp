@@ -148,7 +148,7 @@ float Modbus::combineBytes(unsigned char *buf, unsigned char pos, MBEndianess en
   }
 }
 
-void Modbus::readInputRequest(const char *ip, uint8_t unit, uint8_t function, uint16_t reg, uint8_t length) {
+void Modbus::readInputRequest(IPAddress ip, uint8_t unit, uint8_t function, uint16_t reg, uint8_t length) {
   uint8_t n = 0, tx[12];
 
   Modbus::transactionID = random(65536);

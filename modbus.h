@@ -26,7 +26,7 @@ class Modbus {
   public:
     Modbus();
     uint8_t getDataTypeLength(MBDataType dataType);
-    void readInputRequest(const char *ip, uint8_t unit, uint8_t function, uint16_t reg, uint8_t length);
+    void readInputRequest(IPAddress ip, uint8_t unit, uint8_t function, uint16_t reg, uint8_t length);
     int available(void);
     void read(void);
     unsigned int getTransactionID(void);
