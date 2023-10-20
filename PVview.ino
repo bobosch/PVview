@@ -72,6 +72,7 @@ struct {
 
 const struct {
     const char Desc[13];
+    unsigned char FixedUnitId;
     MBEndianess Endianness;
     unsigned char Function;       // 3: holding registers, 4: input registers
     MBDataType VoltageDataType;
@@ -87,21 +88,22 @@ const struct {
     unsigned int EnergyRegister;  // Total energy (Wh)
     signed char EnergyMultiplier; // 10^x
 } EM[10] = {
-    // Desc,  Endianness, Function, U:DataType, Reg, Mul, I:DataType, Reg, Mul, P:DataType, Reg, Mul, E:DataType, Reg, Mul
+    // Desc, Unit, Endianness, Function, U:DataType, Reg, Mul, I:DataType, Reg, Mul, P:DataType, Reg, Mul, E:DataType, Reg, Mul
     // Modbus TCP inverter
-    { "Fronius Symo",MB_HBF_HWF, 3, MB_FLOAT32, 40085, 0, MB_FLOAT32, 40073, 0, MB_FLOAT32, 40091, 0, MB_FLOAT32, 40101, 0 },
-    { "Sungrow",     MB_HBF_LWF, 4, MB_UINT16,   5018, 0, MB_UINT16,   5021, 0, MB_UINT32,   5008, 0, MB_UINT32,   5003, 3 },
-    { "Sunny WebBox",MB_HBF_HWF, 3, MB_UINT32,  30783, 0, MB_UINT32,  30797, 0, MB_SINT32,  30775, 0, MB_UINT64,  30513, 0 }, // Unit ID 2
-    { "SolarEdge",   MB_HBF_HWF, 3, MB_SINT16,  40196, 0, MB_SINT16,  40191, 0, MB_SINT16,  40083, 0, MB_SINT32,  40226, 0 }, // SolarEdge SunSpec (0.01V / 0.1A / 1W / 1 Wh)
+    { "Fronius Symo", 1, MB_HBF_HWF, 3, MB_FLOAT32, 40085, 0, MB_FLOAT32, 40073, 0, MB_FLOAT32, 40091, 0, MB_FLOAT32, 40101, 0 },
+    { "Sungrow",      1, MB_HBF_LWF, 4, MB_UINT16,   5018, 0, MB_UINT16,   5021, 0, MB_UINT32,   5008, 0, MB_UINT32,   5003, 3 },
+    { "Sunny WebBox", 2, MB_HBF_HWF, 3, MB_UINT32,  30783, 0, MB_UINT32,  30797, 0, MB_SINT32,  30775, 0, MB_UINT64,  30513, 0 },
+    { "SolarEdge",    1, MB_HBF_HWF, 3, MB_SINT16,  40196, 0, MB_SINT16,  40191, 0, MB_SINT16,  40083, 0, MB_SINT32,  40226, 0 }, // SolarEdge SunSpec (0.01V / 0.1A / 1W / 1 Wh)
     // Modbus RTU electric meter
-    { "ABB",         MB_HBF_HWF, 3, MB_UINT32, 0x5B00,-1, MB_UINT32, 0x5B0C,-2, MB_SINT32, 0x5B14,-2, MB_UINT64, 0x5000, 1 }, // ABB B23 212-100 (0.1V / 0.01A / 0.01W / 0.01kWh) RS485 wiring reversed / max read count 125
-    { "Eastron",     MB_HBF_HWF, 4, MB_FLOAT32,   0x0, 0, MB_FLOAT32,   0x6, 0, MB_FLOAT32,  0x34, 0, MB_FLOAT32, 0x156, 3 }, // Eastron SDM630 (V / A / W / kWh) max read count 80
-    { "Finder 7E",   MB_HBF_HWF, 4, MB_FLOAT32,0x1000, 0, MB_FLOAT32,0x100E, 0, MB_FLOAT32,0x1026, 0, MB_FLOAT32,0x1106, 0 }, // Finder 7E.78.8.400.0212 (V / A / W / Wh) max read count 127
-    { "Finder 7M",   MB_HBF_HWF, 4, MB_FLOAT32,  2500, 0, MB_FLOAT32,  2516, 0, MB_FLOAT32,  2536, 0, MB_FLOAT32,  2638, 0 }, // Finder 7M.38.8.400.0212 (V / A / W / Wh) / Backlight 10173
-    { "Phoenix Cont",MB_HBF_LWF, 4, MB_SINT32,    0x0,-1, MB_SINT32,    0xC,-3, MB_SINT32,   0x28,-1, MB_SINT32,   0x3E, 2 }, // PHOENIX CONTACT EEM-350-D-MCB (0,1V / mA / 0,1W / 0,1kWh) max read count 11
-    { "WAGO",        MB_HBF_HWF, 3, MB_FLOAT32,0x5002, 0, MB_FLOAT32,0x500C, 0, MB_FLOAT32,0x5012, 3, MB_FLOAT32,0x6000, 3 }, // WAGO 879-30x0 (V / A / kW / kWh)
+    { "ABB",          0, MB_HBF_HWF, 3, MB_UINT32, 0x5B00,-1, MB_UINT32, 0x5B0C,-2, MB_SINT32, 0x5B14,-2, MB_UINT64, 0x5000, 1 }, // ABB B23 212-100 (0.1V / 0.01A / 0.01W / 0.01kWh) RS485 wiring reversed / max read count 125
+    { "Eastron",      0, MB_HBF_HWF, 4, MB_FLOAT32,   0x0, 0, MB_FLOAT32,   0x6, 0, MB_FLOAT32,  0x34, 0, MB_FLOAT32, 0x156, 3 }, // Eastron SDM630 (V / A / W / kWh) max read count 80
+    { "Finder 7E",    0, MB_HBF_HWF, 4, MB_FLOAT32,0x1000, 0, MB_FLOAT32,0x100E, 0, MB_FLOAT32,0x1026, 0, MB_FLOAT32,0x1106, 0 }, // Finder 7E.78.8.400.0212 (V / A / W / Wh) max read count 127
+    { "Finder 7M",    0, MB_HBF_HWF, 4, MB_FLOAT32,  2500, 0, MB_FLOAT32,  2516, 0, MB_FLOAT32,  2536, 0, MB_FLOAT32,  2638, 0 }, // Finder 7M.38.8.400.0212 (V / A / W / Wh) / Backlight 10173
+    { "Phoenix Cont", 0, MB_HBF_LWF, 4, MB_SINT32,    0x0,-1, MB_SINT32,    0xC,-3, MB_SINT32,   0x28,-1, MB_SINT32,   0x3E, 2 }, // PHOENIX CONTACT EEM-350-D-MCB (0,1V / mA / 0,1W / 0,1kWh) max read count 11
+    { "WAGO",         0, MB_HBF_HWF, 3, MB_FLOAT32,0x5002, 0, MB_FLOAT32,0x500C, 0, MB_FLOAT32,0x5012, 3, MB_FLOAT32,0x6000, 3 }, // WAGO 879-30x0 (V / A / kW / kWh)
 };
 const String NameEM[10] = {"Fronius Symo", "Sungrow", "Sunny WebBox", "SolarEdge", "ABB", "Eastron", "Finder 7E", "Finder 7M", "Phoenix Cont", "WAGO"};
+#define EM_HIDE_UNIT 4
 
 // Time
 const long  gmtOffset_sec = 3600;
@@ -163,16 +165,19 @@ const char* serverIndex =
  "});"
  "</script>";
 
-String htmlSelect(String Name, const String Options[], uint8_t OptionsSize, uint8_t Selected) {
+String htmlSelect(String Name, const String Options[], uint8_t OptionsSize, uint8_t Selected, const String Parameters) {
   uint8_t i;
-  String ret = "<select name='" + Name + "' size='1'>";
+  String ret = "<select name=\"" + Name + "\" size=\"1\" " + Parameters + ">";
   for (i = 0; i < OptionsSize; i++) {
-    ret += "<option value='" + String(i) + "'";
+    ret += "<option value=\"" + String(i) + "\"";
     if (i == Selected) ret += " selected";
     ret += ">" + Options[i] + "</option>";
   }
   ret += "</select>";
   return ret;
+}
+String htmlSelect(String Name, const String Options[], uint8_t OptionsSize, uint8_t Selected) {
+  return htmlSelect(Name, Options, OptionsSize, Selected, "");
 }
 
 // HTTP handlers
@@ -247,7 +252,11 @@ void handleSettings() {
     MB[MBEdit - 1].IP[1] = server.arg("MBIP1").toInt();
     MB[MBEdit - 1].IP[2] = server.arg("MBIP2").toInt();
     MB[MBEdit - 1].IP[3] = server.arg("MBIP3").toInt();
-    MB[MBEdit - 1].Unit = server.arg("MBUnit").toInt();
+    if (MB[MBEdit - 1].EM < EM_HIDE_UNIT) {
+      MB[MBEdit - 1].Unit = EM[MB[MBEdit - 1].EM].FixedUnitId;
+    } else {
+      MB[MBEdit - 1].Unit = server.arg("MBUnit").toInt();
+    }
     preferences.begin("PVview", false);
     preferences.putBytes("MB", &MB, sizeof(MB));
     preferences.putUChar("MBcount", MBcount);
@@ -276,7 +285,11 @@ void handleSettings() {
   }
   for (i = 0; i < MBcount; i++) {
     if (i + 1 == MBEdit) {
-      TableMB += "<tr><td>" + htmlSelect("MBEM", NameEM, 10, MB[i].EM) + "</td><td class='IP'><input type='text' name='MBIP0' value='" + MB[i].IP[0] + "'>.<input type='text' name='MBIP1' value='" + MB[i].IP[1] + "'>.<input type='text' name='MBIP2' value='" + MB[i].IP[2] + "'>.<input type='text' name='MBIP3' value='" + MB[i].IP[3] + "'></td><td><input type='text' name='MBUnit' value='" + String(MB[i].Unit) + "' /></td><td><input type='hidden' name='MBEdit' value='" + String(i + 1) + "' /><input type='submit' name='MB' value='Save' /></td></tr>";
+      TableMB += "<tr><td>" + htmlSelect("MBEM", NameEM, 10, MB[i].EM, "onchange=\"getElementById('MBUnit').disabled=this.value<" + String(EM_HIDE_UNIT) + ";\"") + "</td>";
+      TableMB += "<td class='IP'><input type='text' name='MBIP0' value='" + String(MB[i].IP[0]) + "'>.<input type='text' name='MBIP1' value='" + String(MB[i].IP[1]) + "'>.<input type='text' name='MBIP2' value='" + String(MB[i].IP[2]) + "'>.<input type='text' name='MBIP3' value='" + String(MB[i].IP[3]) + "'></td>";
+      TableMB += "<td><input type='text' id='MBUnit' name='MBUnit' value='" + String(MB[i].Unit) + "'";
+      if (MB[i].EM < EM_HIDE_UNIT) TableMB += " disabled";
+      TableMB += " /></td><td><input type='hidden' name='MBEdit' value='" + String(i + 1) + "' /><input type='submit' name='MB' value='Save' /></td></tr>";
     } else {
       TableMB += "<tr><td>" + String(EM[MB[i].EM].Desc) + "</td><td>" + MB[i].IP.toString() + "</td><td>" + String(MB[i].Unit) + "</td><td><a href='?MBEdit=" + String(i + 1) + "'>Edit</a>";
       if(i + 1 == MBcount) TableMB += " <a href='?MBDel=1'>Delete</a>";
