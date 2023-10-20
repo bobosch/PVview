@@ -563,80 +563,68 @@ void setup() {
   }
 }
 
-void loop() {
-  uint8_t i, j, Element, MB_EM;
+void PVview() {
+  uint8_t i, Element, MB_EM;
+
+  // Wait INTERVAL
+  if (timer < millis()) {
+    timer = millis() + ((uint16_t)Interval * 1000);
+
+    // Clear power when maximum retries exceeded
+    if (RetryErrorCount > RetryError) {
+      Power = 0;
+    }
+
+    // Find the next element to show
+    for (i = 0; i < ARRAY_SIZE(Show); i++) {
+      cycle = (cycle + 1) % ARRAY_SIZE(Show);
+      if (cycle == 0) {
+        RetryAfterCount++;
+      }
+      if (Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && Power > 0)) {
+        break;
+      }
+    }
+
+    // Request power after maximum cycles without power request
+    if (RetryAfterCount > RetryAfter) {
+      Element = SHOW_POWER;
+    } else {
+      Element = Show[cycle].Element;
+    }
+
+    // Request values from all electric meters
+    Count = 0;
+    Sum = 0;
+    Requested = Element;
+    for (i = 0; i < MBcount; i++) {
+      MB_EM = MB[i].EM;
+      switch (Element) {
+        case SHOW_POWER:
+          if (i == 0) {
+            RetryAfterCount = 0;
+            RetryErrorCount++;
+          }
+          M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].PowerRegister, M[i].getDataTypeLength(EM[MB_EM].PowerDataType) / 2);
+          debugD("Modbus %u request power", i);
+          break;
+        case SHOW_ENERGY:
+          if (Power || !Energy) {
+            M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDataType) / 2);
+            debugD("Modbus %u request energy", i);
+          }
+          break;
+      }
+    }
+  }
+}
+
+void display() {
+  uint8_t i;
 #ifdef SPLIT_LINE
   float value;
   String unit;
 #endif
-
-  // Check ethernet status
-  switch (eth_status) {
-    case ETH_GOT_IP:
-    // Handle http connection
-    server.handleClient();
-    // Handle modbus response
-    readModbus();
-
-    // Wait INTERVAL
-    if (timer < millis()) {
-      timer = millis() + ((uint16_t)Interval * 1000);
-
-      // Clear power when maximum retries exceeded
-      if (RetryErrorCount > RetryError) {
-        Power = 0;
-      }
-
-      // Find the next element to show
-      for (i = 0; i < ARRAY_SIZE(Show); i++) {
-        cycle = (cycle + 1) % ARRAY_SIZE(Show);
-        if (cycle == 0) {
-          RetryAfterCount++;
-        }
-        if (Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && Power > 0)) {
-          break;
-        }
-      }
-
-      // Request power after maximum cycles without power request
-      if (RetryAfterCount > RetryAfter) {
-        Element = SHOW_POWER;
-      } else {
-        Element = Show[cycle].Element;
-      }
-
-      // Request values from all electric meters
-      Count = 0;
-      Sum = 0;
-      Requested = Element;
-      for (i = 0; i < MBcount; i++) {
-        MB_EM = MB[i].EM;
-        switch (Element) {
-          case SHOW_POWER:
-            if (i == 0) {
-              RetryAfterCount = 0;
-              RetryErrorCount++;
-            }
-            M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].PowerRegister, M[i].getDataTypeLength(EM[MB_EM].PowerDataType) / 2);
-            debugD("Modbus %u request power", i);
-            break;
-          case SHOW_ENERGY:
-            if (Power || !Energy) {
-              M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDataType) / 2);
-              debugD("Modbus %u request energy", i);
-            }
-            break;
-        }
-      }
-    }
-    break;
-    case ETH_CONNECTED:
-      strcpy(message[0], "No IP");
-      break;
-    case ETH_DISCONNECTED:
-      strcpy(message[0], "No ETH");
-      break;
-  }
 
   if (P.displayAnimate()) {
     // Set timer a bit earlier for modbus request
@@ -688,6 +676,30 @@ void loop() {
       P.displayZoneText(i, message[i], Align[Show[cycle].Align], 0, (uint16_t)Interval * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
     }
   }
+}
 
+void loop() {
+  // Check ethernet status
+  switch (eth_status) {
+    case ETH_GOT_IP:
+      // Handle http connection
+      server.handleClient();
+      // Handle modbus response
+      readModbus();
+      // Main
+      PVview();
+      break;
+    case ETH_CONNECTED:
+      strcpy(message[0], "No IP");
+      break;
+    case ETH_DISCONNECTED:
+      strcpy(message[0], "No ETH");
+      break;
+  }
+
+  // Show
+  display();
+
+  // Console
   Debug.handle();
 }
