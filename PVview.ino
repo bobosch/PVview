@@ -37,6 +37,11 @@ const String NameWhen[2] = { "On power", "Always" };
 const String NameAlign[3] = { "Left", "Center", "Right" };
 const textPosition_t Align[3] = { PA_LEFT, PA_CENTER, PA_RIGHT };
 
+// Network
+#define ETH_DISCONNECTED 0
+#define ETH_CONNECTED 1
+#define ETH_GOT_IP 2
+
 // Modbus settings
 #define MB_COUNT 5
 struct {
@@ -111,9 +116,8 @@ const int   daylightOffset_sec = 3600;
 
 const char prefixes[] = " kMGTPEZYRQ";
 
-bool eth_connected = false;
 char message[LINES][12];
-uint8_t Count, cycle = 0, digitsW, digitsWh, Interval, MBcount, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Requested = 0;
+uint8_t Count, cycle = 0, digitsW, digitsWh, eth_status = ETH_DISCONNECTED, Interval, MBcount, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Requested = 0;
 unsigned long timer = 0;
 float AddEnergy, Energy = 0, Power = 0, Sum;
 String Hostname, NTPServer;
@@ -341,15 +345,14 @@ void WiFiEvent(WiFiEvent_t event) {
       ETH.setHostname(Hostname.c_str());
       break;
     case ARDUINO_EVENT_ETH_CONNECTED:
+      eth_status = ETH_CONNECTED;
       break;
     case ARDUINO_EVENT_ETH_GOT_IP:
-      eth_connected = true;
+      eth_status = ETH_GOT_IP;
       break;
     case ARDUINO_EVENT_ETH_DISCONNECTED:
-      eth_connected = false;
-      break;
     case ARDUINO_EVENT_ETH_STOP:
-      eth_connected = false;
+      eth_status = ETH_DISCONNECTED;
       break;
     default:
       break;
@@ -567,8 +570,9 @@ void loop() {
   String unit;
 #endif
 
-  // Only on ethernet connection
-  if (eth_connected) {
+  // Check ethernet status
+  switch (eth_status) {
+    case ETH_GOT_IP:
     // Handle http connection
     server.handleClient();
     // Handle modbus response
@@ -625,8 +629,13 @@ void loop() {
         }
       }
     }
-  } else {
-    strcpy(message[0], "No ETH");
+    break;
+    case ETH_CONNECTED:
+      strcpy(message[0], "No IP");
+      break;
+    case ETH_DISCONNECTED:
+      strcpy(message[0], "No ETH");
+      break;
   }
 
   if (P.displayAnimate()) {
