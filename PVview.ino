@@ -110,10 +110,6 @@ const struct {
 const String NameEM[10] = {"Fronius Symo", "Sungrow", "Sunny WebBox", "SolarEdge", "ABB", "Eastron", "Finder 7E", "Finder 7M", "Phoenix Cont", "WAGO"};
 #define EM_HIDE_UNIT 4
 
-// Time
-const long  gmtOffset_sec = 3600;
-const int   daylightOffset_sec = 3600;
-
 const char prefixes[] = " kMGTPEZYRQ";
 
 char message[LINES][12];
@@ -480,7 +476,7 @@ void setup() {
   ETH.begin(0, -1, 16, 17, ETH_PHY_RTL8201);
 
   // Init and get the time
-  configTime(gmtOffset_sec, daylightOffset_sec, NTPServer.c_str());
+  configTzTime("CET-1CEST,M3.5.0/02,M10.5.0/03", NTPServer.c_str());
 
   // You can browse to wesp32demo.local with this
   MDNS.begin("wesp32demo");
