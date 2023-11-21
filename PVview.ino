@@ -113,7 +113,7 @@ const String NameEM[10] = {"Fronius Symo", "Sungrow", "Sunny WebBox", "SolarEdge
 const char prefixes[] = " kMGTPEZYRQ";
 
 char message[LINES][12];
-uint8_t Count, cycle = 0, digitsW, digitsWh, eth_status = ETH_DISCONNECTED, Interval, MBcount, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Requested = 0;
+uint8_t Count, cycle = 0, digitsW, digitsWh, eth_status = ETH_DISCONNECTED, Intensity, Interval, MBcount, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Requested = 0;
 unsigned long timer = 0;
 float AddEnergy, Energy = 0, Power = 0, Sum;
 String Hostname, NTPServer;
@@ -220,6 +220,11 @@ void handleSettings() {
     AddEnergy = server.arg("AddEnergy").toFloat() * 1000;
     debugD("New AddEnergy %0.0f Wh", AddEnergy);
     preferences.putFloat("AddEnergy", AddEnergy);
+    // Intensity
+    Intensity = server.arg("Intensity").toInt();
+    debugD("New Intensity %u", Intensity);
+    P.setIntensity(Intensity);
+    preferences.putUChar("Intensity", Intensity);
     // Saved
     debugI("Settings saved");
     preferences.end();
@@ -320,6 +325,7 @@ void handleSettings() {
   " <div><label for='RetryAfter'>Maximum cycles without power request</label><input type='text' id='RetryAfter' name='RetryAfter' value='" + String(RetryAfter) + "'/></div>"
   " <div><label for='RetryError'>Minimum cycles with error before clear power value</label><input type='text' id='RetryError' name='RetryError' value='" + String(RetryError) + "'/></div>"
   " <div><label for='AddEnergy'>Add constant energy (kWh)</label><input type='text' id='AddEnergy' name='AddEnergy' value='" + String(AddEnergy / 1000) + "'/></div>"
+  " <div><label for='Intensity'>Intensity (0-15)</label><input type='text' id='Intensity' name='Intensity' value='" + String(Intensity) + "'/></div>"
   " </fieldset>"
   " <div><input type='hidden' name='Send' value='1' /><input type='submit' value='Save' /></div>"
   "</form>"
@@ -467,6 +473,7 @@ void setup() {
   preferences.getBytes("Show", &Show, sizeof(Show));
   preferences.getBytes("MB", &MB, sizeof(MB));
   MBcount = preferences.getUChar("MBcount", 0);
+  Intensity = preferences.getUChar("Intensity", 7);
   preferences.end();
   RetryAfterCount = RetryAfter;
 
@@ -532,6 +539,7 @@ void setup() {
 
   // Matrix display
   P.begin(LINES);
+  P.setIntensity(Intensity);
 
 #if MAX_DEVICES == 4
   P.setFont(Font8S);
