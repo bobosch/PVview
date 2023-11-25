@@ -115,7 +115,7 @@ const char prefixes[] = " kMGTPEZYRQ";
 char message[LINES][12];
 uint8_t Count, cycle = 0, digitsW, digitsWh, eth_status = ETH_DISCONNECTED, Intensity, Interval, MBcount, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Requested = 0;
 unsigned long timer = 0;
-float AddEnergy, Energy = 0, Power = 0, Sum;
+float AddEnergy, Energy = 0, MultiplyEnergy, Power = 0, Sum;
 String Hostname, NTPServer;
 
 Preferences preferences;
@@ -220,6 +220,10 @@ void handleSettings() {
     AddEnergy = server.arg("AddEnergy").toFloat() * 1000;
     debugD("New AddEnergy %0.0f Wh", AddEnergy);
     preferences.putFloat("AddEnergy", AddEnergy);
+    // MultiplyEnergy
+    MultiplyEnergy = server.arg("MultiplyEnergy").toFloat();
+    debugD("New MultiplyEnergy %0.6f", MultiplyEnergy);
+    preferences.putFloat("MultiplyEnergy", MultiplyEnergy);
     // Intensity
     Intensity = server.arg("Intensity").toInt();
     debugD("New Intensity %u", Intensity);
@@ -325,6 +329,7 @@ void handleSettings() {
   " <div><label for='RetryAfter'>Maximum cycles without power request</label><input type='text' id='RetryAfter' name='RetryAfter' value='" + String(RetryAfter) + "'/></div>"
   " <div><label for='RetryError'>Minimum cycles with error before clear power value</label><input type='text' id='RetryError' name='RetryError' value='" + String(RetryError) + "'/></div>"
   " <div><label for='AddEnergy'>Add constant energy (kWh)</label><input type='text' id='AddEnergy' name='AddEnergy' value='" + String(AddEnergy / 1000) + "'/></div>"
+  " <div><label for='MultiplyEnergy'>Multiply energy with factor</label><input type='text' id='MultiplyEnergy' name='MultiplyEnergy' value='" + String(MultiplyEnergy, 6) + "'/></div>"
   " <div><label for='Intensity'>Intensity (0-15)</label><input type='text' id='Intensity' name='Intensity' value='" + String(Intensity) + "'/></div>"
   " </fieldset>"
   " <div><input type='hidden' name='Send' value='1' /><input type='submit' value='Save' /></div>"
@@ -403,8 +408,18 @@ void readModbus() {
           debugI("Modbus %u receive energy %0.0f Wh", i, value);
           sumModbusValue(SHOW_ENERGY, value, Energy);
           if (Count == MBcount) {
-            debugI("Add constant energy %0.0f Wh", AddEnergy);
-            Energy += AddEnergy;
+            if (MBcount > 1) {
+              debugI("Sum of received energy %0.0f Wh", Energy);
+            }
+            if (MultiplyEnergy != 1.0) {
+              Energy *= MultiplyEnergy;
+              debugI("Corrected with factor %0.6f energy %0.0f Wh", MultiplyEnergy, Energy);
+            }
+            if (AddEnergy > 0) {
+              debugI("Add constant energy %0.0f Wh", AddEnergy);
+              Energy += AddEnergy;
+              debugI("Total energy %0.0f Wh", Energy);
+            }
           }
           break;
       }
@@ -470,6 +485,7 @@ void setup() {
   RetryAfter = preferences.getUChar("RetryAfter", 3);
   RetryError = preferences.getUChar("RetryError", 3);
   AddEnergy = preferences.getFloat("AddEnergy", 0);
+  MultiplyEnergy = preferences.getFloat("MultiplyEnergy", 1);
   preferences.getBytes("Show", &Show, sizeof(Show));
   preferences.getBytes("MB", &MB, sizeof(MB));
   MBcount = preferences.getUChar("MBcount", 0);
