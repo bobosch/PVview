@@ -120,7 +120,7 @@ const char prefixes[] = " kMGTPEZYRQ";
 
 char message[LINES][12];
 uint8_t Count, cycle = 0, digitsW, digitsWh, digitsWhd, eth_status = ETH_DISCONNECTED, Intensity, Interval, MBcount, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Requested = 0;
-unsigned long timer = 0;
+unsigned long timer = LONG_MAX;
 float AddEnergy, Energy = 0, EnergyDay = 0, MultiplyEnergy, Power = 0, Sum;
 String Hostname, NTPServer;
 
@@ -381,6 +381,15 @@ void printTime(char *str){
   sprintf(str, "%d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
 }
 
+bool checkTime(uint8_t hour, uint8_t minute, uint8_t second) {
+  struct tm timeinfo;
+
+  if (!getLocalTime(&timeinfo)) return false;
+
+  if(timeinfo.tm_hour == hour && timeinfo.tm_min == minute && timeinfo.tm_sec == second) return true;
+  else return false;
+}
+
 void sumModbusValue(float read, float &value) {
   if(!isnan(read) && !isinf(read)) {
     Count++;
@@ -596,9 +605,9 @@ void setup() {
 void PVview() {
   uint8_t i, Element, MB_EM;
 
-  // Wait INTERVAL
-  if (timer < millis()) {
-    timer = millis() + ((uint16_t)Interval * 1000);
+  // Wait INTERVAL (a bit earlier for modbus request)
+  if (millis() - timer > ((uint16_t)Interval * 1000) - 800) {
+    timer = millis();
 
     // Clear power when maximum retries exceeded
     if (RetryErrorCount > RetryError) {
@@ -653,6 +662,11 @@ void PVview() {
       }
     }
   }
+
+  // Clear daily energy
+  if (checkTime(0, 0, 0)) {
+    EnergyDay = 0;
+  }
 }
 
 void display() {
@@ -663,8 +677,8 @@ void display() {
 #endif
 
   if (P.displayAnimate()) {
-    // Set timer a bit earlier for modbus request
-    timer = millis() + ((uint16_t)Interval * 1000) - 800;
+    // Sync timer with display
+    timer = millis();
 
     // Show new element
     for(i = 0; i < LINES; i++) strcpy(message[i], "");
