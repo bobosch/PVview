@@ -448,50 +448,49 @@ void readModbus() {
 }
 
 uint8_t prefixUnit(float &value, String &unit, uint8_t maximumDigits) {
-  uint8_t thousand;
-  int8_t digits, exponent, point;
+  uint8_t decimal = 0, exponent, thousand = 0;
+  int8_t over;
   char prefix = 32; // " "
 
-  // Show more digits on wider displays
-  exponent = log10(value) - (maximumDigits - 3);
-  // Get position of decimal point
-  point = exponent % 3;
-  digits = exponent - point;
-  // Don't show decimal point on smallest (default) unit
-  if (digits <= 0) {
-    digits = 0;
-    point = 2;
-  }
-  // Don't show decimal point when using more than 5 digits
-  if (maximumDigits >= 5) point = 2;
+  // Number of digits
+  exponent = floor(log10(value));
+  // Over maximum digits
+  over = exponent - maximumDigits + 3;
+  // Number of thousands needed
+  if (over > 0) thousand = floor(over / 3);
+  // Get decimal places
+  if (over > 2) decimal = 2 - (over - thousand * 3);
+  if (decimal >= maximumDigits) decimal = maximumDigits - 1;
+
+  // No decimal places when using more than 6 digits
+  if (maximumDigits > 6) decimal = 0;
 
   // Get prefix
-  thousand = digits / 3;
   if (thousand >= 0 && thousand <= 10) prefix = prefixes[thousand];
   else prefix = 63; // "?"
 
   // Reduce value depending on prefix
-  value = value / pow10(digits);
+  value = value / pow10(thousand * 3);
   if (prefix != 32) unit = prefix + unit;
 
-  return point;
+  return decimal;
 }
 
 void printModbus(char *str, float value, String unit, uint8_t maximumDigits) {
-  uint8_t point, space = 32;
+  uint8_t decimal, space = 32;
 
   if (unit == "") space = 0;
 
-  point = prefixUnit(value, unit, maximumDigits);
-  switch (point) {
+  decimal = prefixUnit(value, unit, maximumDigits);
+  switch (decimal) {
     case 0:
-      sprintf(str, "%.2f%c%s", value, space, unit);
+      sprintf(str, "%.0f%c%s", value, space, unit);
       break;
     case 1:
       sprintf(str, "%.1f%c%s", value, space, unit);
       break;
-    default:
-      sprintf(str, "%.0f%c%s", value, space, unit);
+    case 2:
+      sprintf(str, "%.2f%c%s", value, space, unit);
       break;
   }
 }
