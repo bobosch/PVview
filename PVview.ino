@@ -25,7 +25,8 @@
 #define SHOW_POWER 0
 #define SHOW_ENERGY 1
 #define SHOW_TIME 2
-const String NameElement[3] = { "Power", "Energy", "Time" };
+#define SHOW_ENERGY_DAY 3
+const String NameElement[4] = { "Power", "Energy", "Time", "Energy/Day" };
 
 #define ON_POWER 0
 #define ALWAYS 1
@@ -55,23 +56,25 @@ struct {
     uint8_t When;
     uint8_t Align;
 // Modify this array to your needs
-} Show[3] = {
-  // Element,    When,     Align
-  { SHOW_POWER,  ON_POWER, RIGHT },
-  { SHOW_ENERGY, ALWAYS,   RIGHT },
-  { SHOW_TIME,   ALWAYS,   CENTER },
+} Show[4] = {
+  // Element,        When,     Align
+  { SHOW_TIME,       ALWAYS,   CENTER },
+  { SHOW_POWER,      ON_POWER, RIGHT  },
+  { SHOW_ENERGY_DAY, ALWAYS,   RIGHT  },
+  { SHOW_ENERGY,     ALWAYS,   RIGHT  },
 };
 
 #if MAX_DEVICES == 6
 #if LINES == 2
 #define SPLIT_LINE
-#include "Font8S.h"
 #endif
 #endif
 
-#if MAX_DEVICES == 4
+#if defined SPLIT_LINE || MAX_DEVICES <= 5
 #include "Font8S.h"
-#else
+#endif
+
+#if MAX_DEVICES != 4
 #include "Font8L.h"
 #endif
 
@@ -92,20 +95,23 @@ const struct {
     MBDataType EnergyDataType;
     unsigned int EnergyRegister;  // Total energy (Wh)
     signed char EnergyMultiplier; // 10^x
+    MBDataType EnergyDayDataType;
+    unsigned int EnergyDayRegister;  // Daily energy (Wh)
+    signed char EnergyDayMultiplier; // 10^x
 } EM[10] = {
-    // Desc, Unit, Endianness, Function, U:DataType, Reg, Mul, I:DataType, Reg, Mul, P:DataType, Reg, Mul, E:DataType, Reg, Mul
+    // Desc, Unit, Endianness, Function, U:DataType, Reg, Mul, I:DataType, Reg, Mul, P:DataType, Reg, Mul, E:DataType, Reg, Mul, E/d:DataType,Reg,Mul
     // Modbus TCP inverter
-    { "Fronius Symo", 1, MB_HBF_HWF, 3, MB_FLOAT32, 40085, 0, MB_FLOAT32, 40073, 0, MB_FLOAT32, 40091, 0, MB_FLOAT32, 40101, 0 },
-    { "Sungrow",      1, MB_HBF_LWF, 4, MB_UINT16,   5018, 0, MB_UINT16,   5021, 0, MB_UINT32,   5008, 0, MB_UINT32,   5003, 3 },
-    { "Sunny WebBox", 2, MB_HBF_HWF, 3, MB_UINT32,  30783, 0, MB_UINT32,  30797, 0, MB_SINT32,  30775, 0, MB_UINT64,  30513, 0 },
-    { "SolarEdge",    1, MB_HBF_HWF, 3, MB_SINT16,  40196, 0, MB_SINT16,  40191, 0, MB_SINT16,  40083, 0, MB_SINT32,  40226, 0 }, // SolarEdge SunSpec (0.01V / 0.1A / 1W / 1 Wh)
+    { "Fronius Symo", 1, MB_HBF_HWF, 3, MB_FLOAT32, 40085, 0, MB_FLOAT32, 40073, 0, MB_FLOAT32, 40091, 0, MB_UINT64,    509, 0, MB_UINT64,    501, 0 }, // MB_FLOAT32, 40101, 0
+    { "Sungrow",      1, MB_HBF_LWF, 4, MB_UINT16,   5018, 0, MB_UINT16,   5021, 0, MB_UINT32,   5008, 0, MB_UINT32,  13002, 3, MB_UINT32,  13001, 3 }, // MB_UINT32,   5003, 3
+    { "Sunny WebBox", 2, MB_HBF_HWF, 3, MB_UINT32,  30783, 0, MB_UINT32,  30797, 0, MB_SINT32,  30775, 0, MB_UINT64,  30513, 0, MB_UINT64,  30517, 0 },
+    { "SolarEdge",    1, MB_HBF_HWF, 3, MB_SINT16,  40196, 0, MB_SINT16,  40191, 0, MB_SINT16,  40083, 0, MB_SINT32,  40226, 0, MB_UINT16,      0, 0 }, // SolarEdge SunSpec (0.01V / 0.1A / 1W / 1 Wh)
     // Modbus RTU electric meter
-    { "ABB",          0, MB_HBF_HWF, 3, MB_UINT32, 0x5B00,-1, MB_UINT32, 0x5B0C,-2, MB_SINT32, 0x5B14,-2, MB_UINT64, 0x5000, 1 }, // ABB B23 212-100 (0.1V / 0.01A / 0.01W / 0.01kWh) RS485 wiring reversed / max read count 125
-    { "Eastron",      0, MB_HBF_HWF, 4, MB_FLOAT32,   0x0, 0, MB_FLOAT32,   0x6, 0, MB_FLOAT32,  0x34, 0, MB_FLOAT32, 0x156, 3 }, // Eastron SDM630 (V / A / W / kWh) max read count 80
-    { "Finder 7E",    0, MB_HBF_HWF, 4, MB_FLOAT32,0x1000, 0, MB_FLOAT32,0x100E, 0, MB_FLOAT32,0x1026, 0, MB_FLOAT32,0x1106, 0 }, // Finder 7E.78.8.400.0212 (V / A / W / Wh) max read count 127
-    { "Finder 7M",    0, MB_HBF_HWF, 4, MB_FLOAT32,  2500, 0, MB_FLOAT32,  2516, 0, MB_FLOAT32,  2536, 0, MB_FLOAT32,  2638, 0 }, // Finder 7M.38.8.400.0212 (V / A / W / Wh) / Backlight 10173
-    { "Phoenix Cont", 0, MB_HBF_LWF, 4, MB_SINT32,    0x0,-1, MB_SINT32,    0xC,-3, MB_SINT32,   0x28,-1, MB_SINT32,   0x3E, 2 }, // PHOENIX CONTACT EEM-350-D-MCB (0,1V / mA / 0,1W / 0,1kWh) max read count 11
-    { "WAGO",         0, MB_HBF_HWF, 3, MB_FLOAT32,0x5002, 0, MB_FLOAT32,0x500C, 0, MB_FLOAT32,0x5012, 3, MB_FLOAT32,0x6000, 3 }, // WAGO 879-30x0 (V / A / kW / kWh)
+    { "ABB",          0, MB_HBF_HWF, 3, MB_UINT32, 0x5B00,-1, MB_UINT32, 0x5B0C,-2, MB_SINT32, 0x5B14,-2, MB_UINT64, 0x5000, 1, MB_UINT16,      0, 0 }, // ABB B23 212-100 (0.1V / 0.01A / 0.01W / 0.01kWh) RS485 wiring reversed / max read count 125
+    { "Eastron",      0, MB_HBF_HWF, 4, MB_FLOAT32,   0x0, 0, MB_FLOAT32,   0x6, 0, MB_FLOAT32,  0x34, 0, MB_FLOAT32, 0x156, 3, MB_UINT16,      0, 0 }, // Eastron SDM630 (V / A / W / kWh) max read count 80
+    { "Finder 7E",    0, MB_HBF_HWF, 4, MB_FLOAT32,0x1000, 0, MB_FLOAT32,0x100E, 0, MB_FLOAT32,0x1026, 0, MB_FLOAT32,0x1106, 0, MB_UINT16,      0, 0 }, // Finder 7E.78.8.400.0212 (V / A / W / Wh) max read count 127
+    { "Finder 7M",    0, MB_HBF_HWF, 4, MB_FLOAT32,  2500, 0, MB_FLOAT32,  2516, 0, MB_FLOAT32,  2536, 0, MB_FLOAT32,  2638, 0, MB_UINT16,      0, 0 }, // Finder 7M.38.8.400.0212 (V / A / W / Wh) / Backlight 10173
+    { "Phoenix Cont", 0, MB_HBF_LWF, 4, MB_SINT32,    0x0,-1, MB_SINT32,    0xC,-3, MB_SINT32,   0x28,-1, MB_SINT32,   0x3E, 2, MB_UINT16,      0, 0 }, // PHOENIX CONTACT EEM-350-D-MCB (0,1V / mA / 0,1W / 0,1kWh) max read count 11
+    { "WAGO",         0, MB_HBF_HWF, 3, MB_FLOAT32,0x5002, 0, MB_FLOAT32,0x500C, 0, MB_FLOAT32,0x5012, 3, MB_FLOAT32,0x6000, 3, MB_UINT16,      0, 0 }, // WAGO 879-30x0 (V / A / kW / kWh)
 };
 const String NameEM[10] = {"Fronius Symo", "Sungrow", "Sunny WebBox", "SolarEdge", "ABB", "Eastron", "Finder 7E", "Finder 7M", "Phoenix Cont", "WAGO"};
 #define EM_HIDE_UNIT 4
@@ -113,9 +119,9 @@ const String NameEM[10] = {"Fronius Symo", "Sungrow", "Sunny WebBox", "SolarEdge
 const char prefixes[] = " kMGTPEZYRQ";
 
 char message[LINES][12];
-uint8_t Count, cycle = 0, digitsW, digitsWh, eth_status = ETH_DISCONNECTED, Intensity, Interval, MBcount, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Requested = 0;
+uint8_t Count, cycle = 0, digitsW, digitsWh, digitsWhd, eth_status = ETH_DISCONNECTED, Intensity, Interval, MBcount, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Requested = 0;
 unsigned long timer = 0;
-float AddEnergy, Energy = 0, MultiplyEnergy, Power = 0, Sum;
+float AddEnergy, Energy = 0, EnergyDay = 0, MultiplyEnergy, Power = 0, Sum;
 String Hostname, NTPServer;
 
 Preferences preferences;
@@ -235,7 +241,7 @@ void handleSettings() {
   }
 
   ShowEdit = server.arg("ShowEdit").toInt();
-  if (ShowEdit > 3) ShowEdit = 0;
+  if (ShowEdit > 4) ShowEdit = 0;
   if (ShowEdit && server.arg("Show") == "Save") {
     Show[ShowEdit - 1].Element = server.arg("ShowElement").toInt();
     Show[ShowEdit - 1].When = server.arg("ShowWhen").toInt();
@@ -287,7 +293,7 @@ void handleSettings() {
   // Generate page
   for (i = 0; i < ARRAY_SIZE(Show); i++) {
     if (i + 1 == ShowEdit) {
-      TableShow += "<tr><td>" + htmlSelect("ShowElement", NameElement, 3, Show[i].Element) + "</td><td>" + htmlSelect("ShowWhen", NameWhen, 2, Show[i].When) + "</td><td>" + htmlSelect("ShowAlign", NameAlign, 3, Show[i].Align) + "</td><td><input type='hidden' name='ShowEdit' value='" + String(i + 1) + "' /><input type='submit' name='Show' value='Save' /></td></tr>";
+      TableShow += "<tr><td>" + htmlSelect("ShowElement", NameElement, 4, Show[i].Element) + "</td><td>" + htmlSelect("ShowWhen", NameWhen, 2, Show[i].When) + "</td><td>" + htmlSelect("ShowAlign", NameAlign, 3, Show[i].Align) + "</td><td><input type='hidden' name='ShowEdit' value='" + String(i + 1) + "' /><input type='submit' name='Show' value='Save' /></td></tr>";
     } else {
       TableShow += "<tr><td>" + NameElement[Show[i].Element] + "</td><td>" + NameWhen[Show[i].When] + "</td><td>" + NameAlign[Show[i].Align] + "</td><td><a href='?ShowEdit=" + String(i + 1) + "'>Edit</a></td></tr>";
     }
@@ -375,7 +381,7 @@ void printTime(char *str){
   sprintf(str, "%d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
 }
 
-void sumModbusValue(unsigned char show, float read, float &value) {
+void sumModbusValue(float read, float &value) {
   if(!isnan(read) && !isinf(read)) {
     Count++;
     Sum += read;
@@ -398,7 +404,7 @@ void readModbus() {
         case SHOW_POWER:
           value = M[i].getValue(EM[MB_EM].Endianness, EM[MB_EM].PowerDataType, EM[MB_EM].PowerMultiplier);
           debugI("Modbus %u receive power %0.0f W", i, value);
-          sumModbusValue(SHOW_POWER, value, Power);
+          sumModbusValue(value, Power);
           if (Count == MBcount) {
             RetryErrorCount = 0;
           }
@@ -406,7 +412,7 @@ void readModbus() {
         case SHOW_ENERGY:
           value = M[i].getValue(EM[MB_EM].Endianness, EM[MB_EM].EnergyDataType, EM[MB_EM].EnergyMultiplier);
           debugI("Modbus %u receive energy %0.0f Wh", i, value);
-          sumModbusValue(SHOW_ENERGY, value, Energy);
+          sumModbusValue(value, Energy);
           if (Count == MBcount) {
             if (MBcount > 1) {
               debugI("Sum of received energy %0.0f Wh", Energy);
@@ -421,6 +427,11 @@ void readModbus() {
               debugI("Total energy %0.0f Wh", Energy);
             }
           }
+          break;
+        case SHOW_ENERGY_DAY:
+          value = M[i].getValue(EM[MB_EM].Endianness, EM[MB_EM].EnergyDayDataType, EM[MB_EM].EnergyDayMultiplier);
+          debugI("Modbus %u receive daily energy %0.0f Wh", i, value);
+          sumModbusValue(value, EnergyDay);
           break;
       }
     }
@@ -562,13 +573,12 @@ void setup() {
 #else
   P.setFont(Font8L);
 #endif
-#if MAX_DEVICES > 5
-  digitsW = (MAX_DEVICES * 8 - P.getTextColumns("M W")) / (P.getTextColumns("8") + 1);
-  digitsWh = (MAX_DEVICES * 8 - P.getTextColumns("M Wh")) / (P.getTextColumns("8") + 1);
-#else
-  digitsW = 3;
-  digitsWh = 3;
+  digitsW = (MAX_DEVICES * 8 - P.getTextColumns(". kW")) / (P.getTextColumns("8") + 1);
+  digitsWh = (MAX_DEVICES * 8 - P.getTextColumns(". kWh")) / (P.getTextColumns("8") + 1);
+#if MAX_DEVICES == 5
+  P.setFont(Font8S);
 #endif
+  digitsWhd = (MAX_DEVICES * 8 - P.getTextColumns(". kWh/d")) / (P.getTextColumns("8") + 1);
 
 #ifdef SPLIT_LINE
   P.setZone(0, 0, 2);
@@ -634,6 +644,12 @@ void PVview() {
             debugD("Modbus %u request energy", i);
           }
           break;
+        case SHOW_ENERGY_DAY:
+          if (Power || !EnergyDay) {
+            M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyDayRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDayDataType) / 2);
+            debugD("Modbus %u request daily energy", i);
+          }
+          break;
       }
     }
   }
@@ -656,8 +672,9 @@ void display() {
     unit = "";
 #endif
     if(Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && Power > 0)) {
-      switch(Show[cycle].Element) {
 #ifdef SPLIT_LINE
+      P.setFont(1, Font8L);
+      switch(Show[cycle].Element) {
         case SHOW_POWER:
           value = Power;
           unit = "W";
@@ -666,7 +683,16 @@ void display() {
           value = Energy;
           unit = "Wh";
           break;
+        case SHOW_ENERGY_DAY:
+          value = EnergyDay;
+          unit = "Wh/d";
+          P.setFont(1, Font8S);
+          break;
 #else
+#if MAX_DEVICES == 5
+      P.setFont(0, Font8L);
+#endif
+      switch(Show[cycle].Element) {
         case SHOW_POWER:
           printModbus(message[0], Power, "W", digitsW);
           break;
@@ -676,6 +702,12 @@ void display() {
 #else
           printModbus(message[0], Energy, "Wh", digitsWh);
 #endif
+          break;
+        case SHOW_ENERGY_DAY:
+#if MAX_DEVICES == 5
+          P.setFont(0, Font8S);
+#endif
+          printModbus(message[0], EnergyDay, "Wh/d", digitsWhd);
           break;
 #endif
         case SHOW_TIME:
