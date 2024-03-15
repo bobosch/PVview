@@ -118,6 +118,7 @@ const String NameEM[10] = {"Fronius Symo", "Sungrow", "Sunny WebBox", "SolarEdge
 
 const char prefixes[] = " kMGTPEZYRQ";
 
+bool SmallNumbers;
 char message[LINES][12];
 uint8_t Count, cycle = 0, digitsW, digitsWh, digitsWhd, eth_status = ETH_DISCONNECTED, Intensity, Interval, MBcount, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Requested = 0;
 unsigned long timer = LONG_MAX;
@@ -195,7 +196,7 @@ void handleNotFound() {
 }
 void handleSettings() {
   uint8_t clear, MBEdit, ShowEdit, i;
-  String TableMB = "", TableShow = "";
+  String CheckSmallNumbers = "", TableMB = "", TableShow = "";
 
   // Save settings
   String Send = server.arg("Send");
@@ -230,8 +231,12 @@ void handleSettings() {
     MultiplyEnergy = server.arg("MultiplyEnergy").toFloat();
     debugD("New MultiplyEnergy %0.6f", MultiplyEnergy);
     preferences.putFloat("MultiplyEnergy", MultiplyEnergy);
+    // CheckSmallNumbers
+    SmallNumbers = server.arg("SmallNumbers").toInt() % 2;
+    debugD("New SmallNumbers %u", SmallNumbers);
+    preferences.putBool("SmallNumbers", SmallNumbers);
     // Intensity
-    Intensity = server.arg("Intensity").toInt();
+    Intensity = server.arg("Intensity").toInt() % 16;
     debugD("New Intensity %u", Intensity);
     P.setIntensity(Intensity);
     preferences.putUChar("Intensity", Intensity);
@@ -239,6 +244,8 @@ void handleSettings() {
     debugI("Settings saved");
     preferences.end();
   }
+
+  if (SmallNumbers) CheckSmallNumbers = " checked";
 
   ShowEdit = server.arg("ShowEdit").toInt();
   if (ShowEdit > 4) ShowEdit = 0;
@@ -336,6 +343,7 @@ void handleSettings() {
   " <div><label for='RetryError'>Minimum cycles with error before clear power value</label><input type='text' id='RetryError' name='RetryError' value='" + String(RetryError) + "'/></div>"
   " <div><label for='AddEnergy'>Add constant energy (kWh)</label><input type='text' id='AddEnergy' name='AddEnergy' value='" + String(AddEnergy / 1000) + "'/></div>"
   " <div><label for='MultiplyEnergy'>Multiply energy with factor</label><input type='text' id='MultiplyEnergy' name='MultiplyEnergy' value='" + String(MultiplyEnergy, 6) + "'/></div>"
+  " <div><label for='SmallNumbers'>Small numbers</label><input type='checkbox' id='SmallNumbers' name='SmallNumbers' value='1'" + CheckSmallNumbers + "/></div>"
   " <div><label for='Intensity'>Intensity (0-15)</label><input type='text' id='Intensity' name='Intensity' value='" + String(Intensity) + "'/></div>"
   " </fieldset>"
   " <div><input type='hidden' name='Send' value='1' /><input type='submit' value='Save' /></div>"
@@ -447,23 +455,30 @@ void readModbus() {
   }
 }
 
-uint8_t prefixUnit(float &value, String &unit, uint8_t maximumDigits) {
+uint8_t prefixUnit(float &value, String &unit, uint8_t maximumDigits, bool small) {
   uint8_t decimal = 0, exponent, thousand = 0;
   int8_t over;
   char prefix = 32; // " "
 
   // Number of digits
   exponent = floor(log10(value));
-  // Over maximum digits
-  over = exponent - maximumDigits + 3;
-  // Number of thousands needed
-  if (over > 0) thousand = floor(over / 3);
-  // Get decimal places
-  if (over > 2) decimal = 2 - (over - thousand * 3);
-  if (decimal >= maximumDigits) decimal = maximumDigits - 1;
-
-  // No decimal places when using more than 6 digits
-  if (maximumDigits > 6) decimal = 0;
+  if (small) {
+    // Number of thousands fits into
+    thousand = floor(exponent / 3);
+    // Decimal places to fill
+    decimal = maximumDigits - (exponent - thousand * 3) - 1;
+    if (decimal > thousand * 3) decimal = thousand * 3;
+  } else {
+    // Over maximum digits
+    over = exponent - maximumDigits + 3;
+    // Number of thousands needed
+    if (over > 0) thousand = floor(over / 3);
+    // Get decimal places
+    if (over > 2) decimal = 2 - (over - thousand * 3);
+    if (decimal >= maximumDigits) decimal = maximumDigits - 1;
+    // No decimal places when using more than 6 digits
+    if (maximumDigits > 6) decimal = 0;
+  }
 
   // Get prefix
   if (thousand >= 0 && thousand <= 10) prefix = prefixes[thousand];
@@ -481,7 +496,7 @@ void printModbus(char *str, float value, String unit, uint8_t maximumDigits) {
 
   if (unit == "") space = 0;
 
-  decimal = prefixUnit(value, unit, maximumDigits);
+  decimal = prefixUnit(value, unit, maximumDigits, SmallNumbers);
   switch (decimal) {
     case 0:
       sprintf(str, "%.0f%c%s", value, space, unit);
@@ -491,6 +506,21 @@ void printModbus(char *str, float value, String unit, uint8_t maximumDigits) {
       break;
     case 2:
       sprintf(str, "%.2f%c%s", value, space, unit);
+      break;
+    case 3:
+      sprintf(str, "%.3f%c%s", value, space, unit);
+      break;
+    case 4:
+      sprintf(str, "%.4f%c%s", value, space, unit);
+      break;
+    case 5:
+      sprintf(str, "%.5f%c%s", value, space, unit);
+      break;
+    case 6:
+      sprintf(str, "%.6f%c%s", value, space, unit);
+      break;
+    default:
+      sprintf(str, "%.7f%c%s", value, space, unit);
       break;
   }
 }
@@ -508,6 +538,7 @@ void setup() {
   preferences.getBytes("Show", &Show, sizeof(Show));
   preferences.getBytes("MB", &MB, sizeof(MB));
   MBcount = preferences.getUChar("MBcount", 0);
+  SmallNumbers = preferences.getBool("SmallNumbers", false);
   Intensity = preferences.getUChar("Intensity", 7);
   preferences.end();
   RetryAfterCount = RetryAfter;
@@ -732,7 +763,7 @@ void display() {
 #ifdef SPLIT_LINE
     if (unit != "") {
       printModbus(message[0], value, "", 4);
-      prefixUnit(value, unit, 4);
+      prefixUnit(value, unit, 4, SmallNumbers);
       sprintf(message[1], "%s", unit);
     }
 #endif
