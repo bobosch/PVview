@@ -119,7 +119,7 @@ const String NameEM[10] = {"Fronius Symo", "Sungrow", "Sunny WebBox", "SolarEdge
 const char prefixes[] = " kMGTPEZYRQ";
 
 bool SmallNumbers;
-char message[LINES][12];
+char message[LINES][15];
 uint8_t Count, cycle = 0, digitsW, digitsWh, digitsWhd, eth_status = ETH_DISCONNECTED, Intensity, Interval, MBcount, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Requested = 0;
 unsigned long timer = LONG_MAX;
 float AddEnergy, Energy = 0, EnergyDay = 0, MultiplyEnergy, Power = 0, Sum;
@@ -495,7 +495,6 @@ void printModbus(char *str, float value, String unit, uint8_t maximumDigits) {
   uint8_t decimal, space = 32;
 
   if (unit == "") space = 0;
-
   decimal = prefixUnit(value, unit, maximumDigits, SmallNumbers);
   switch (decimal) {
     case 0:
