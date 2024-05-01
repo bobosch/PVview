@@ -14,7 +14,7 @@
 
 // MD Parola settings
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
-#define MAX_DEVICES 4 // * 8 dots
+#define WIDTH 4 // * 8 dots
 #define LINES 1
 
 #define CLK_PIN 18
@@ -64,17 +64,18 @@ struct {
   { SHOW_ENERGY,     ALWAYS,   RIGHT  },
 };
 
-#if MAX_DEVICES == 6
+#define MAX_DEVICES (WIDTH * LINES)
+#if WIDTH == 3
 #if LINES == 2
 #define SPLIT_LINE
 #endif
 #endif
 
-#if defined SPLIT_LINE || MAX_DEVICES <= 5
+#if defined SPLIT_LINE || WIDTH <= 5
 #include "Font8S.h"
 #endif
 
-#if MAX_DEVICES != 4
+#if WIDTH != 4
 #include "Font8L.h"
 #endif
 
@@ -456,8 +457,8 @@ void readModbus() {
 }
 
 uint8_t prefixUnit(float &value, String &unit, uint8_t maximumDigits, bool small) {
-  uint8_t decimal = 0, exponent, thousand = 0;
-  int8_t over;
+  uint8_t exponent, thousand = 0;
+  int8_t decimal = 0, over;
   char prefix = 32; // " "
 
   // Number of digits
@@ -467,6 +468,10 @@ uint8_t prefixUnit(float &value, String &unit, uint8_t maximumDigits, bool small
     thousand = floor(exponent / 3);
     // Decimal places to fill
     decimal = maximumDigits - (exponent - thousand * 3) - 1;
+    if (decimal < 0) {
+      decimal = maximumDigits - 1;
+      thousand++;
+    }
     if (decimal > thousand * 3) decimal = thousand * 3;
   } else {
     // Over maximum digits
@@ -488,7 +493,7 @@ uint8_t prefixUnit(float &value, String &unit, uint8_t maximumDigits, bool small
   value = value / pow10(thousand * 3);
   if (prefix != 32) unit = prefix + unit;
 
-  return decimal;
+  return (uint8_t)decimal;
 }
 
 void printModbus(char *str, float value, String unit, uint8_t maximumDigits) {
@@ -606,23 +611,21 @@ void setup() {
   P.begin(LINES);
   P.setIntensity(Intensity);
 
-#if MAX_DEVICES == 4
+#if WIDTH <= 4
   P.setFont(Font8S);
 #else
   P.setFont(Font8L);
 #endif
-  digitsW = (MAX_DEVICES * 8 - P.getTextColumns(". kW")) / (P.getTextColumns("8") + 1);
-  digitsWh = (MAX_DEVICES * 8 - P.getTextColumns(". kWh")) / (P.getTextColumns("8") + 1);
-#if MAX_DEVICES == 5
+  digitsW = (WIDTH * 8 - P.getTextColumns(". kW")) / (P.getTextColumns("8") + 1);
+  digitsWh = (WIDTH * 8 - P.getTextColumns(". kWh")) / (P.getTextColumns("8") + 1);
+#if WIDTH == 5
   P.setFont(Font8S);
 #endif
-  digitsWhd = (MAX_DEVICES * 8 - P.getTextColumns(". kWh/d")) / (P.getTextColumns("8") + 1);
+  digitsWhd = (WIDTH * 8 - P.getTextColumns(". kWh/d")) / (P.getTextColumns("8") + 1);
 
-#ifdef SPLIT_LINE
-  P.setZone(0, 0, 2);
-  P.setFont(0, Font8S);
-  P.setZone(1, 3, 5);
-  P.setFont(1, Font8L);
+#if LINES == 2
+  P.setZone(0, 0, WIDTH - 1);
+  P.setZone(1, WIDTH, MAX_DEVICES - 1);
 #endif
 
   cycle = ARRAY_SIZE(Show) - 1;
@@ -716,6 +719,7 @@ void display() {
 #endif
     if(Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && Power > 0)) {
 #ifdef SPLIT_LINE
+      P.setFont(0, Font8S);
       P.setFont(1, Font8L);
       switch(Show[cycle].Element) {
         case SHOW_POWER:
@@ -732,7 +736,7 @@ void display() {
           P.setFont(1, Font8S);
           break;
 #else
-#if MAX_DEVICES == 5
+#if WIDTH == 5
       P.setFont(0, Font8L);
 #endif
       switch(Show[cycle].Element) {
@@ -740,14 +744,14 @@ void display() {
           printModbus(message[0], Power, "W", digitsW);
           break;
         case SHOW_ENERGY:
-#if MAX_DEVICES == 4
+#if WIDTH == 4
           printModbus(message[0], Energy, "wh", digitsWh);
 #else
           printModbus(message[0], Energy, "Wh", digitsWh);
 #endif
           break;
         case SHOW_ENERGY_DAY:
-#if MAX_DEVICES == 5
+#if WIDTH == 5
           P.setFont(0, Font8S);
 #endif
           printModbus(message[0], EnergyDay, "Wh/d", digitsWhd);
