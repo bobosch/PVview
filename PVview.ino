@@ -639,8 +639,40 @@ void setup() {
   }
 }
 
+void requestAll (uint8_t Element) {
+  uint8_t i, MB_EM;
+
+  Count = 0;
+  Sum = 0;
+  for (i = 0; i < MBcount; i++) {
+    MB_EM = MB[i].EM;
+    switch (Element) {
+      case SHOW_POWER:
+        if (i == 0) {
+          RetryAfterCount = 0;
+          RetryErrorCount++;
+        }
+        M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].PowerRegister, M[i].getDataTypeLength(EM[MB_EM].PowerDataType) / 2);
+        debugD("Modbus %u request power", i);
+        break;
+      case SHOW_ENERGY:
+        if (Power || !Energy) {
+          M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDataType) / 2);
+          debugD("Modbus %u request energy", i);
+        }
+        break;
+      case SHOW_ENERGY_DAY:
+        if (Power || !EnergyDay) {
+          M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyDayRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDayDataType) / 2);
+          debugD("Modbus %u request daily energy", i);
+        }
+        break;
+    }
+  }
+}
+
 void PVview() {
-  uint8_t i, Element, MB_EM;
+  uint8_t i, Element;
 
   // Wait INTERVAL (a bit earlier for modbus request)
   if (millis() - timer > ((uint16_t)Interval * 1000) - 800) {
@@ -670,34 +702,7 @@ void PVview() {
     }
 
     // Request values from all electric meters
-    Count = 0;
-    Sum = 0;
-    Requested = Element;
-    for (i = 0; i < MBcount; i++) {
-      MB_EM = MB[i].EM;
-      switch (Element) {
-        case SHOW_POWER:
-          if (i == 0) {
-            RetryAfterCount = 0;
-            RetryErrorCount++;
-          }
-          M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].PowerRegister, M[i].getDataTypeLength(EM[MB_EM].PowerDataType) / 2);
-          debugD("Modbus %u request power", i);
-          break;
-        case SHOW_ENERGY:
-          if (Power || !Energy) {
-            M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDataType) / 2);
-            debugD("Modbus %u request energy", i);
-          }
-          break;
-        case SHOW_ENERGY_DAY:
-          if (Power || !EnergyDay) {
-            M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyDayRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDayDataType) / 2);
-            debugD("Modbus %u request daily energy", i);
-          }
-          break;
-      }
-    }
+    requestAll(Element);
   }
 
   // Clear daily energy
