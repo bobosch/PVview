@@ -411,10 +411,10 @@ void sumModbusValue(float read, float &value) {
 
 void readModbus() {
   unsigned char MB_EM;
-  unsigned int ID;
+  uint8_t i;
   float value;
 
-  for(uint8_t i = 0; i < MBcount; i++) {
+  for(i = 0; i < MBcount; i++) {
     if (M[i].available()) {
       MB_EM = MB[i].EM;
       M[i].read();
