@@ -121,7 +121,7 @@ const char prefixes[] = " kMGTPEZYRQ";
 
 bool SmallNumbers;
 char message[LINES][15];
-uint8_t Count, cycle = 0, digitsW, digitsWh, digitsWhd, eth_status = ETH_DISCONNECTED, Intensity, Interval, MBcount, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Requested = 0;
+uint8_t Count, cycle = 0, Cycles[LINES], digitsW, digitsWh, digitsWhd, eth_status = ETH_DISCONNECTED, Intensity, Interval, Line = 0, MBcount, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Request[LINES];
 unsigned long timer = LONG_MAX;
 float AddEnergy, Energy = 0, EnergyDay = 0, MultiplyEnergy, Power = 0, Sum;
 String Hostname, NTPServer;
@@ -418,7 +418,7 @@ void readModbus() {
     if (M[i].available()) {
       MB_EM = MB[i].EM;
       M[i].read();
-      switch (Requested) {
+      switch (Request[Line]) {
         case SHOW_POWER:
           value = M[i].getValue(EM[MB_EM].Endianness, EM[MB_EM].PowerDataType, EM[MB_EM].PowerMultiplier);
           debugI("Modbus %u receive power %0.0f W", i, value);
@@ -699,16 +699,35 @@ uint8_t getNextElement (void) {
 }
 
 void PVview() {
-  uint8_t Element;
+  uint8_t l = 0;
 
   // Wait INTERVAL (a bit earlier for modbus request)
-  if (millis() - timer > ((uint16_t)Interval * 1000) - 800) {
+  if (millis() - timer > ((uint16_t)Interval * 1000) - ((LINES + 1) * 400)) {
     timer = millis();
 
-    Element = getNextElement();
+#ifndef SPLIT_LINE
+    for (l = 0; l < LINES; l++) {
+#endif
+      Request[l] = getNextElement();
+      Cycles[l] = cycle;
+#ifndef SPLIT_LINE
+    }
+#endif
 
+    Line = 0;
     // Request values from all electric meters
-    requestAll(Element);
+    requestAll(Request[Line]);
+  }
+
+  if (Count == MBcount) {
+    Count = 0;
+#ifndef SPLIT_LINE
+    if (Line < LINES - 1) {
+      Line ++;
+      // Request values from all electric meters
+      requestAll(Request[Line]);
+    }
+#endif
   }
 
   // Clear daily energy
@@ -729,66 +748,76 @@ void display() {
     timer = millis();
 
     // Show new element
-    for(l = 0; l < LINES; l++) strcpy(message[l], "");
+    for (l = 0; l < LINES; l++) strcpy(message[l], "");
 #ifdef SPLIT_LINE
+    l = 0;
     unit = "";
+#else
+    for(l = 0; l < LINES; l++) {
 #endif
-    if(Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && Power > 0)) {
+
+      if(Show[Cycles[l]].When == ALWAYS || (Show[Cycles[l]].When == ON_POWER && Power > 0)) {
 #ifdef SPLIT_LINE
-      P.setFont(0, Font8S);
-      P.setFont(1, Font8L);
-      switch(Show[cycle].Element) {
-        case SHOW_POWER:
-          value = Power;
-          unit = "W";
-          break;
-        case SHOW_ENERGY:
-          value = Energy;
-          unit = "Wh";
-          break;
-        case SHOW_ENERGY_DAY:
-          value = EnergyDay;
-          unit = "Wh/d";
-          P.setFont(1, Font8S);
-          break;
+        P.setFont(0, Font8S);
+        P.setFont(1, Font8L);
+        switch(Show[Cycles[0]].Element) {
+          case SHOW_POWER:
+            value = Power;
+            unit = "W";
+            break;
+          case SHOW_ENERGY:
+            value = Energy;
+            unit = "Wh";
+            break;
+          case SHOW_ENERGY_DAY:
+            value = EnergyDay;
+            unit = "Wh/d";
+            P.setFont(1, Font8S);
+            break;
+          case SHOW_TIME:
+            printTime(message[0]);
+            break;
+        }
 #else
 #if WIDTH == 5
-      P.setFont(0, Font8L);
+        P.setFont(l, Font8L);
 #endif
-      switch(Show[cycle].Element) {
-        case SHOW_POWER:
-          printModbus(message[0], Power, "W", digitsW);
-          break;
-        case SHOW_ENERGY:
+        switch(Show[Cycles[l]].Element) {
+          case SHOW_POWER:
+            printModbus(message[l], Power, "W", digitsW);
+            break;
+          case SHOW_ENERGY:
 #if WIDTH == 4
-          printModbus(message[0], Energy, "wh", digitsWh);
+            printModbus(message[l], Energy, "wh", digitsWh);
 #else
-          printModbus(message[0], Energy, "Wh", digitsWh);
+            printModbus(message[l], Energy, "Wh", digitsWh);
 #endif
-          break;
-        case SHOW_ENERGY_DAY:
+            break;
+          case SHOW_ENERGY_DAY:
 #if WIDTH == 5
-          P.setFont(0, Font8S);
+            P.setFont(l, Font8S);
 #endif
-          printModbus(message[0], EnergyDay, "Wh/d", digitsWhd);
-          break;
+            printModbus(message[l], EnergyDay, "Wh/d", digitsWhd);
+            break;
+          case SHOW_TIME:
+            printTime(message[l]);
+            break;
+        }
 #endif
-        case SHOW_TIME:
-          printTime(message[0]);
-          break;
       }
-    }
 
 #ifdef SPLIT_LINE
-    if (unit != "") {
-      printModbus(message[0], value, "", 4);
-      prefixUnit(value, unit, 4, SmallNumbers);
-      sprintf(message[1], "%s", unit);
+      if (unit != "") {
+        printModbus(message[0], value, "", 4);
+        prefixUnit(value, unit, 4, SmallNumbers);
+        sprintf(message[1], "%s", unit);
+      }
+#else
     }
 #endif
     for(l = 0; l < LINES; l++) {
       debugV("Display line %u: %s", l, message[l]);
-      P.displayZoneText(l, message[l], Align[Show[cycle].Align], 0, (uint16_t)Interval * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
+      P.displayZoneText(l, message[l], Align[Show[Cycles[l]].Align], 0, (uint16_t)Interval * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
     }
   }
 }
