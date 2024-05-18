@@ -671,35 +671,41 @@ void requestAll (uint8_t Element) {
   }
 }
 
+uint8_t getNextElement (void) {
+  uint8_t i;
+
+  // Clear power when maximum retries exceeded
+  if (RetryErrorCount > RetryError) {
+    Power = 0;
+  }
+
+  // Find the next element to show
+  for (i = 0; i < ARRAY_SIZE(Show); i++) {
+    cycle = (cycle + 1) % ARRAY_SIZE(Show);
+    if (cycle == 0) {
+      RetryAfterCount++;
+    }
+    if (Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && Power > 0)) {
+      break;
+    }
+  }
+
+  // Request power after maximum cycles without power request
+  if (RetryAfterCount > RetryAfter) {
+    return (SHOW_POWER);
+  } else {
+    return(Show[cycle].Element);
+  }
+}
+
 void PVview() {
-  uint8_t i, Element;
+  uint8_t Element;
 
   // Wait INTERVAL (a bit earlier for modbus request)
   if (millis() - timer > ((uint16_t)Interval * 1000) - 800) {
     timer = millis();
 
-    // Clear power when maximum retries exceeded
-    if (RetryErrorCount > RetryError) {
-      Power = 0;
-    }
-
-    // Find the next element to show
-    for (i = 0; i < ARRAY_SIZE(Show); i++) {
-      cycle = (cycle + 1) % ARRAY_SIZE(Show);
-      if (cycle == 0) {
-        RetryAfterCount++;
-      }
-      if (Show[cycle].When == ALWAYS || (Show[cycle].When == ON_POWER && Power > 0)) {
-        break;
-      }
-    }
-
-    // Request power after maximum cycles without power request
-    if (RetryAfterCount > RetryAfter) {
-      Element = SHOW_POWER;
-    } else {
-      Element = Show[cycle].Element;
-    }
+    Element = getNextElement();
 
     // Request values from all electric meters
     requestAll(Element);
