@@ -611,6 +611,7 @@ void setup() {
   P.begin(LINES);
   P.setIntensity(Intensity);
 
+  // Matrix font width
 #if WIDTH <= 4
   P.setFont(Font8S);
 #else
@@ -623,10 +624,14 @@ void setup() {
 #endif
   digitsWhd = (WIDTH * 8 - P.getTextColumns(". kWh/d")) / (P.getTextColumns("8") + 1);
 
+  // Matrix zones
 #if LINES == 2
   P.setZone(0, 0, WIDTH - 1);
   P.setZone(1, WIDTH, MAX_DEVICES - 1);
 #endif
+
+  // Matrix intensity
+  P.setIntensity(Intensity);
 
   cycle = ARRAY_SIZE(Show) - 1;
   for (uint8_t i = 0; i < MB_COUNT; i++) {
