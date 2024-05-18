@@ -707,7 +707,7 @@ void PVview() {
 }
 
 void display() {
-  uint8_t i;
+  uint8_t l;
 #ifdef SPLIT_LINE
   float value;
   String unit;
@@ -718,7 +718,7 @@ void display() {
     timer = millis();
 
     // Show new element
-    for(i = 0; i < LINES; i++) strcpy(message[i], "");
+    for(l = 0; l < LINES; l++) strcpy(message[l], "");
 #ifdef SPLIT_LINE
     unit = "";
 #endif
@@ -775,9 +775,9 @@ void display() {
       sprintf(message[1], "%s", unit);
     }
 #endif
-    for(i = 0; i < LINES; i++) {
-      debugV("Display line %u: %s", i, message[i]);
-      P.displayZoneText(i, message[i], Align[Show[cycle].Align], 0, (uint16_t)Interval * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
+    for(l = 0; l < LINES; l++) {
+      debugV("Display line %u: %s", l, message[l]);
+      P.displayZoneText(l, message[l], Align[Show[cycle].Align], 0, (uint16_t)Interval * 1000, PA_NO_EFFECT, PA_NO_EFFECT);
     }
   }
 }
