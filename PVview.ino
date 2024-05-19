@@ -724,8 +724,8 @@ void PVview() {
 #ifndef SPLIT_LINE
     if (Line < LINES - 1) {
       Line ++;
-      // Request values from all electric meters
-      requestAll(Request[Line]);
+      // Request values from all electric meters when different from previous request
+      if (Request[Line] != Request[Line - 1]) requestAll(Request[Line]);
     }
 #endif
   }
