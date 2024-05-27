@@ -22,6 +22,8 @@
 #define CS_PIN 5
 
 // Application settings
+#define REQUEST_BUFFER_SIZE 10
+
 #define SHOW_POWER 0
 #define SHOW_ENERGY 1
 #define SHOW_TIME 2
@@ -121,9 +123,9 @@ const char prefixes[] = " kMGTPEZYRQ";
 
 bool SmallNumbers;
 char message[LINES][15];
-uint8_t Count, cycle = 0, Cycles[LINES], digitsW, digitsWh, digitsWhd, eth_status = ETH_DISCONNECTED, Intensity, Interval, Line, MBcount;
-uint8_t RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Request[LINES], ZeroSecond = 255;
-unsigned long timer = LONG_MAX;
+uint8_t Count, cycle = 0, Cycles[LINES], digitsW, digitsWh, digitsWhd, eth_status = ETH_DISCONNECTED, Intensity, Interval, MBcount;
+uint8_t RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Request[REQUEST_BUFFER_SIZE], RequestIn = 0, RequestOut = 0, ZeroSecond = 255;
+unsigned long timer = LONG_MAX, RequestTimer = LONG_MAX;
 float AddEnergy, Energy = 0, EnergyDay = 0, MultiplyEnergy, Power = 0, Sum;
 String Hostname, NTPServer;
 
@@ -384,6 +386,10 @@ void printTime(char *str){
   sprintf(str, "%d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
 }
 
+void increase(uint8_t &pointer, uint8_t max) {
+  pointer = (pointer + 1) % max;
+}
+
 void checkTime(void) {
   if (!getLocalTime(&timeinfo)) return;
 
@@ -421,7 +427,7 @@ void readModbus() {
     if (M[i].available()) {
       MB_EM = MB[i].EM;
       M[i].read();
-      switch (Request[Line]) {
+      switch (Request[RequestOut]) {
         case SHOW_POWER:
           value = M[i].getValue(EM[MB_EM].Endianness, EM[MB_EM].PowerDataType, EM[MB_EM].PowerMultiplier);
           debugI("Modbus %u receive power %0.0f W", i, value);
@@ -659,16 +665,15 @@ void requestAll (uint8_t Element) {
         debugD("Modbus %u request power", i);
         break;
       case SHOW_ENERGY:
-        if (Power || !Energy) {
-          M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDataType) / 2);
-          debugD("Modbus %u request energy", i);
-        }
+        M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDataType) / 2);
+        debugD("Modbus %u request energy", i);
         break;
       case SHOW_ENERGY_DAY:
-        if (Power || !EnergyDay) {
-          M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyDayRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDayDataType) / 2);
-          debugD("Modbus %u request daily energy", i);
-        }
+        M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyDayRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDayDataType) / 2);
+        debugD("Modbus %u request daily energy", i);
+        break;
+      default:
+        Count++;
         break;
     }
   }
@@ -702,7 +707,7 @@ uint8_t getNextElement (void) {
 }
 
 void PVview() {
-  uint8_t l = 0;
+  uint8_t Element = 255, l = 0;
 
   // Wait INTERVAL (a bit earlier for modbus request)
   if (millis() - timer > ((uint16_t)Interval * 1000) - ((LINES + 1) * 400)) {
@@ -711,26 +716,36 @@ void PVview() {
 #ifndef SPLIT_LINE
     for (l = 0; l < LINES; l++) {
 #endif
-      Request[l] = getNextElement();
+      Request[RequestIn] = getNextElement();
+      // Avoid duplicate requests with multiple lines
+      if (Request[RequestIn] != Element && (Request[RequestIn] == SHOW_POWER || Power)) {
+        Element = Request[RequestIn];
+        increase(RequestIn, REQUEST_BUFFER_SIZE);
+      }
       Cycles[l] = cycle;
 #ifndef SPLIT_LINE
     }
 #endif
-
-    Line = 0;
-    // Request values from all electric meters
-    requestAll(Request[Line]);
   }
 
-  if (Count == MBcount) {
-    Count = 0;
-#ifndef SPLIT_LINE
-    if (Line < LINES - 1) {
-      Line ++;
-      // Request values from all electric meters when different from previous request
-      if (Request[Line] != Request[Line - 1]) requestAll(Request[Line]);
+  // Process request queue
+  if (RequestIn != RequestOut) {
+    // Request next when idle (Count = 255)
+    if (Count == 255) {
+      RequestTimer = millis();
+      requestAll(Request[RequestOut]);
     }
-#endif
+    // Go to next item when received last one
+    if (Count == MBcount) {
+      Count = 255;
+      increase(RequestOut, REQUEST_BUFFER_SIZE);
+    }
+    // Discard requests on timeout
+    else if ((millis() - RequestTimer) > 2000) {
+      Count = 255;
+      RequestOut = RequestIn;
+      debugW("Discard all requests because of no modbus response");
+    }
   }
 
   checkTime();
