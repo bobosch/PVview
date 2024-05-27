@@ -121,7 +121,7 @@ const char prefixes[] = " kMGTPEZYRQ";
 
 bool SmallNumbers;
 char message[LINES][15];
-uint8_t Count, cycle = 0, Cycles[LINES], digitsW, digitsWh, digitsWhd, eth_status = ETH_DISCONNECTED, Intensity, Interval, Line = 0, MBcount, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Request[LINES];
+uint8_t Count, cycle = 0, Cycles[LINES], digitsW, digitsWh, digitsWhd, eth_status = ETH_DISCONNECTED, Intensity, Interval, Line = 0, MBcount, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Request[LINES], ZeroSecond = 255;
 unsigned long timer = LONG_MAX;
 float AddEnergy, Energy = 0, EnergyDay = 0, MultiplyEnergy, Power = 0, Sum;
 String Hostname, NTPServer;
@@ -383,20 +383,30 @@ void WiFiEvent(WiFiEvent_t event) {
 
 void printTime(char *str){
   struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)){
-    return;
-  }
+
+  if (!getLocalTime(&timeinfo)) return;
 
   sprintf(str, "%d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
 }
 
-bool checkTime(uint8_t hour, uint8_t minute, uint8_t second) {
+void checkTime(void) {
   struct tm timeinfo;
 
-  if (!getLocalTime(&timeinfo)) return false;
+  if (!getLocalTime(&timeinfo)) return;
 
-  if(timeinfo.tm_hour == hour && timeinfo.tm_min == minute && timeinfo.tm_sec == second) return true;
-  else return false;
+  if (floor(timeinfo.tm_sec / 10) == 0) {
+    if (ZeroSecond == 255) ZeroSecond = 0;
+  } else {
+    ZeroSecond = 255;
+  }
+
+  if (ZeroSecond == 0) {
+    ZeroSecond = 1;
+    // Clear daily energy at midnight
+    if (timeinfo.tm_hour == 0 && timeinfo.tm_min == 0) {
+      EnergyDay = 0;
+    }
+  }
 }
 
 void sumModbusValue(float read, float &value) {
@@ -730,10 +740,7 @@ void PVview() {
 #endif
   }
 
-  // Clear daily energy
-  if (checkTime(0, 0, 0)) {
-    EnergyDay = 0;
-  }
+  checkTime();
 }
 
 void display() {
