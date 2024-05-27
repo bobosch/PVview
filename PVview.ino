@@ -115,25 +115,23 @@ const struct {
     { "WAGO",         0, MB_HBF_HWF, 3, MB_FLOAT32,0x5002, 0, MB_FLOAT32,0x500C, 0, MB_FLOAT32,0x5012, 3, MB_FLOAT32,0x6000, 3, MB_UINT16,      0, 0 }, // WAGO 879-30x0 (V / A / kW / kWh)
 };
 const String NameEM[10] = {"Fronius Symo", "Sungrow", "Sunny WebBox", "SolarEdge", "ABB", "Eastron", "Finder 7E", "Finder 7M", "Phoenix Cont", "WAGO"};
-#define EM_HIDE_UNIT 4
+#define INVERTER_COUNT 4
 
 const char prefixes[] = " kMGTPEZYRQ";
 
 bool SmallNumbers;
 char message[LINES][15];
-uint8_t Count, cycle = 0, Cycles[LINES], digitsW, digitsWh, digitsWhd, eth_status = ETH_DISCONNECTED, Intensity, Interval, Line = 0, MBcount, RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Request[LINES], ZeroSecond = 255;
+uint8_t Count, cycle = 0, Cycles[LINES], digitsW, digitsWh, digitsWhd, eth_status = ETH_DISCONNECTED, Intensity, Interval, Line, MBcount;
+uint8_t RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Request[LINES], ZeroSecond = 255;
 unsigned long timer = LONG_MAX;
 float AddEnergy, Energy = 0, EnergyDay = 0, MultiplyEnergy, Power = 0, Sum;
 String Hostname, NTPServer;
 
+struct tm timeinfo;
 Preferences preferences;
-
 MD_Parola P = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
-
 Modbus M[MB_COUNT];
-
 WebServer server(80);
-
 RemoteDebug Debug;
 
 const char* serverIndex =
@@ -206,11 +204,11 @@ void handleSettings() {
     preferences.begin("PVview", false);
     // Hostname
     Hostname = server.arg("Hostname");
-    debugD("New Hostname %s", Hostname);
+    debugD("New Hostname %s", Hostname.c_str());
     preferences.putString("Hostname", Hostname);
     // NTPServer
     NTPServer = server.arg("NTPServer");
-    debugD("New NTPServer %s", NTPServer);
+    debugD("New NTPServer %s", NTPServer.c_str());
     preferences.putString("NTPServer", NTPServer);
     // Interval
     Interval = server.arg("Interval").toInt();
@@ -234,7 +232,7 @@ void handleSettings() {
     preferences.putFloat("MultiplyEnergy", MultiplyEnergy);
     // CheckSmallNumbers
     SmallNumbers = server.arg("SmallNumbers").toInt() % 2;
-    debugD("New SmallNumbers %u", SmallNumbers);
+    debugD("New SmallNumbers %s", SmallNumbers ? "true" : "false");
     preferences.putBool("SmallNumbers", SmallNumbers);
     // Intensity
     Intensity = server.arg("Intensity").toInt() % 16;
@@ -275,7 +273,7 @@ void handleSettings() {
     MB[MBEdit - 1].IP[1] = server.arg("MBIP1").toInt();
     MB[MBEdit - 1].IP[2] = server.arg("MBIP2").toInt();
     MB[MBEdit - 1].IP[3] = server.arg("MBIP3").toInt();
-    if (MB[MBEdit - 1].EM < EM_HIDE_UNIT) {
+    if (EM[MB[MBEdit - 1].EM].FixedUnitId) {
       MB[MBEdit - 1].Unit = EM[MB[MBEdit - 1].EM].FixedUnitId;
     } else {
       MB[MBEdit - 1].Unit = server.arg("MBUnit").toInt();
@@ -308,11 +306,10 @@ void handleSettings() {
   }
   for (i = 0; i < MBcount; i++) {
     if (i + 1 == MBEdit) {
-      TableMB += "<tr><td>" + htmlSelect("MBEM", NameEM, 10, MB[i].EM, "onchange=\"getElementById('MBUnit').disabled=this.value<" + String(EM_HIDE_UNIT) + ";\"") + "</td>";
+      TableMB += "<tr><td>" + htmlSelect("MBEM", NameEM, 10, MB[i].EM) + "</td>";
       TableMB += "<td class='IP'><input type='text' name='MBIP0' value='" + String(MB[i].IP[0]) + "'>.<input type='text' name='MBIP1' value='" + String(MB[i].IP[1]) + "'>.<input type='text' name='MBIP2' value='" + String(MB[i].IP[2]) + "'>.<input type='text' name='MBIP3' value='" + String(MB[i].IP[3]) + "'></td>";
-      TableMB += "<td><input type='text' id='MBUnit' name='MBUnit' value='" + String(MB[i].Unit) + "'";
-      if (MB[i].EM < EM_HIDE_UNIT) TableMB += " disabled";
-      TableMB += " /></td><td><input type='hidden' name='MBEdit' value='" + String(i + 1) + "' /><input type='submit' name='MB' value='Save' /></td></tr>";
+      TableMB += "<td><input type='text' id='MBUnit' name='MBUnit' value='" + String(MB[i].Unit) + "' /></td>";
+      TableMB += "<td><input type='hidden' name='MBEdit' value='" + String(i + 1) + "' /><input type='submit' name='MB' value='Save' /></td></tr>";
     } else {
       TableMB += "<tr><td>" + String(EM[MB[i].EM].Desc) + "</td><td>" + MB[i].IP.toString() + "</td><td>" + String(MB[i].Unit) + "</td><td><a href='?MBEdit=" + String(i + 1) + "'>Edit</a>";
       if(i + 1 == MBcount) TableMB += " <a href='?MBDel=1'>Delete</a>";
@@ -382,16 +379,12 @@ void WiFiEvent(WiFiEvent_t event) {
 }
 
 void printTime(char *str){
-  struct tm timeinfo;
-
   if (!getLocalTime(&timeinfo)) return;
 
   sprintf(str, "%d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
 }
 
 void checkTime(void) {
-  struct tm timeinfo;
-
   if (!getLocalTime(&timeinfo)) return;
 
   if (floor(timeinfo.tm_sec / 10) == 0) {
@@ -410,12 +403,12 @@ void checkTime(void) {
 }
 
 void sumModbusValue(float read, float &value) {
-  if(!isnan(read) && !isinf(read)) {
-    Count++;
+  if(!isnan(read) && !isinf(read) && read >= 0) {
     Sum += read;
-    if (Count == MBcount) {
-      value = Sum;
-    }
+  }
+  Count++;
+  if (Count == MBcount) {
+    value = Sum;
   }
 }
 
