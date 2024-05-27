@@ -22,12 +22,18 @@
 #define CS_PIN 5
 
 // Application settings
+//#define PVOUTPUT
 #define REQUEST_BUFFER_SIZE 10
 
 #define SHOW_POWER 0
 #define SHOW_ENERGY 1
 #define SHOW_TIME 2
 #define SHOW_ENERGY_DAY 3
+#define REQUEST_Temp 4
+#define REQUEST_DC1V 5
+#define REQUEST_DC1A 6
+#define REQUEST_DC2V 7
+#define REQUEST_DC2A 8
 const String NameElement[4] = { "Power", "Energy", "Time", "Energy/Day" };
 
 #define ON_POWER 0
@@ -104,9 +110,9 @@ const struct {
 } EM[10] = {
     // Desc, Unit, Endianness, Function, U:DataType, Reg, Mul, I:DataType, Reg, Mul, P:DataType, Reg, Mul, E:DataType, Reg, Mul, E/d:DataType,Reg,Mul
     // Modbus TCP inverter
-    { "Fronius Symo", 1, MB_HBF_HWF, 3, MB_FLOAT32, 40085, 0, MB_FLOAT32, 40073, 0, MB_FLOAT32, 40091, 0, MB_UINT64,    509, 0, MB_UINT64,    501, 0 }, // MB_FLOAT32, 40101, 0
-    { "Sungrow",      1, MB_HBF_LWF, 4, MB_UINT16,   5018, 0, MB_UINT16,   5021, 0, MB_UINT32,   5008, 0, MB_UINT32,  13002, 3, MB_UINT32,  13001, 3 }, // MB_UINT32,   5003, 3
-    { "Sunny WebBox", 2, MB_HBF_HWF, 3, MB_UINT32,  30783, 0, MB_UINT32,  30797, 0, MB_SINT32,  30775, 0, MB_UINT64,  30513, 0, MB_UINT64,  30517, 0 },
+    { "Fronius Symo", 1, MB_HBF_HWF, 3, MB_FLOAT32, 40085, 0, MB_FLOAT32, 40073, 0, MB_FLOAT32, 40091, 0, MB_UINT64,    509, 0, MB_UINT64,    501, 0 },
+    { "Sungrow",      1, MB_HBF_LWF, 4, MB_UINT16,   5018, 0, MB_UINT16,   5021, 0, MB_UINT32,   5008, 0, MB_UINT32,  13002, 3, MB_UINT32,  13001, 3 },
+    { "SMA Sunny",    0, MB_HBF_HWF, 3, MB_UINT32,  30783,-2, MB_UINT32,  30797,-3, MB_SINT32,  30775, 0, MB_UINT64,  30513, 0, MB_UINT64,  30517, 0 }, // SMA (0,01V / mA / W / Wh ) max read count 125 / Unit 2 for WebBox
     { "SolarEdge",    1, MB_HBF_HWF, 3, MB_SINT16,  40196, 0, MB_SINT16,  40191, 0, MB_SINT16,  40083, 0, MB_SINT32,  40226, 0, MB_UINT16,      0, 0 }, // SolarEdge SunSpec (0.01V / 0.1A / 1W / 1 Wh)
     // Modbus RTU electric meter
     { "ABB",          0, MB_HBF_HWF, 3, MB_UINT32, 0x5B00,-1, MB_UINT32, 0x5B0C,-2, MB_SINT32, 0x5B14,-2, MB_UINT64, 0x5000, 1, MB_UINT16,      0, 0 }, // ABB B23 212-100 (0.1V / 0.01A / 0.01W / 0.01kWh) RS485 wiring reversed / max read count 125
@@ -116,7 +122,7 @@ const struct {
     { "Phoenix Cont", 0, MB_HBF_LWF, 4, MB_SINT32,    0x0,-1, MB_SINT32,    0xC,-3, MB_SINT32,   0x28,-1, MB_SINT32,   0x3E, 2, MB_UINT16,      0, 0 }, // PHOENIX CONTACT EEM-350-D-MCB (0,1V / mA / 0,1W / 0,1kWh) max read count 11
     { "WAGO",         0, MB_HBF_HWF, 3, MB_FLOAT32,0x5002, 0, MB_FLOAT32,0x500C, 0, MB_FLOAT32,0x5012, 3, MB_FLOAT32,0x6000, 3, MB_UINT16,      0, 0 }, // WAGO 879-30x0 (V / A / kW / kWh)
 };
-const String NameEM[10] = {"Fronius Symo", "Sungrow", "Sunny WebBox", "SolarEdge", "ABB", "Eastron", "Finder 7E", "Finder 7M", "Phoenix Cont", "WAGO"};
+const String NameEM[10] = {"Fronius Symo", "Sungrow", "SMA Sunny", "SolarEdge", "ABB", "Eastron", "Finder 7E", "Finder 7M", "Phoenix Cont", "WAGO"};
 #define INVERTER_COUNT 4
 
 const char prefixes[] = " kMGTPEZYRQ";
@@ -135,6 +141,33 @@ MD_Parola P = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 Modbus M[MB_COUNT];
 WebServer server(80);
 RemoteDebug Debug;
+
+#ifdef PVOUTPUT
+#include <HTTPClient.h>
+// Aditional information from inverter
+const struct {
+    MBDataType MPPTVoltageDataType;
+    signed char MPPTVoltageMultiplier; // 10^x
+    unsigned int MPPT1VoltageRegister; // Voltage (V)
+    unsigned int MPPT2VoltageRegister; // Current (A)
+    MBDataType MPPTCurrentDataType;
+    signed char MPPTCurrentMultiplier; // 10^x
+    unsigned int MPPT1CurrentRegister; // Voltage (V)
+    unsigned int MPPT2CurrentRegister; // Current (A)
+    MBDataType TemperatureDataType;
+    signed char TemperatureMultiplier; // 10^x
+    unsigned int TemperatureRegister; // Temperature (°C)
+} Inv[INVERTER_COUNT] = {
+    // U:DataType, Mul, 1:Reg, 2:Reg, I:DataType, Mul, 1:Reg, 2:Reg, T:DataType, Mul, Reg
+    { MB_UINT16,  -2,   40283, 40303, MB_UINT16, -2,   40282, 40302, MB_UINT16, -3, 40289 },
+    { MB_UINT16,   0,    5011,  5013, MB_UINT16,  0,    5012,  5014, MB_UINT16,  0,     0 },
+    { MB_SINT32,  -2,   30771, 30959, MB_SINT32, -3,   30769, 30957, MB_SINT32, -1, 30953 }, // (0,01V / mA)
+    { MB_SINT32,   0,       0,     0, MB_SINT32,  0,       0,     0, MB_UINT16,  0,     0 },
+};
+int PVO_ID;
+float MPPT1Current = 0, MPPT1Voltage = 0, MPPT2Current = 0, MPPT2Voltage = 0, PowerMax = 0, Temperature= 0;
+String PVO_APIkey;
+#endif
 
 const char* serverIndex =
 "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script>"
@@ -241,6 +274,16 @@ void handleSettings() {
     debugD("New Intensity %u", Intensity);
     P.setIntensity(Intensity);
     preferences.putUChar("Intensity", Intensity);
+#ifdef PVOUTPUT
+    // PVO API key
+    PVO_APIkey = server.arg("PVO_APIkey");
+    debugD("New PVO_APIkey %s", PVO_APIkey.c_str());
+    preferences.putString("PVO_APIkey", PVO_APIkey);
+    // PVO ID
+    PVO_ID = server.arg("PVO_ID").toInt();
+    debugD("New PVO_ID %u", PVO_ID);
+    preferences.putInt("PVO_ID", PVO_ID);
+ #endif
     // Saved
     debugI("Settings saved");
     preferences.end();
@@ -346,6 +389,12 @@ void handleSettings() {
   " <div><label for='SmallNumbers'>Small numbers</label><input type='checkbox' id='SmallNumbers' name='SmallNumbers' value='1'" + CheckSmallNumbers + "/></div>"
   " <div><label for='Intensity'>Intensity (0-15)</label><input type='text' id='Intensity' name='Intensity' value='" + String(Intensity) + "'/></div>"
   " </fieldset>"
+#ifdef PVOUTPUT
+  " <fieldset><legend>PVOutput</legend>"
+  " <div><label for='PVO_APIkey'>API key</label><input type='text' id='PVO_APIkey' name='PVO_APIkey' value='" + PVO_APIkey + "'/></div>"
+  " <div><label for='PVO_ID'>System ID</label><input type='text' id='PVO_ID' name='PVO_ID' value='" + String(PVO_ID) + "'/></div>"
+  " </fieldset>"
+#endif
   " <div><input type='hidden' name='Send' value='1' /><input type='submit' value='Save' /></div>"
   "</form>"
   "<form method='POST' action='/' enctype='multipart/form-data'>"
@@ -405,8 +454,74 @@ void checkTime(void) {
     if (timeinfo.tm_hour == 0 && timeinfo.tm_min == 0) {
       EnergyDay = 0;
     }
+#ifdef PVOUTPUT
+    // Send statistic every 5 minutes
+    if (!(timeinfo.tm_min % 5) && PVO_APIkey && PVO_ID) {
+      Request[RequestIn] = SHOW_ENERGY_DAY;
+      increase(RequestIn, REQUEST_BUFFER_SIZE);
+      Request[RequestIn] = REQUEST_Temp;
+      increase(RequestIn, REQUEST_BUFFER_SIZE);
+      Request[RequestIn] = REQUEST_DC1V;
+      increase(RequestIn, REQUEST_BUFFER_SIZE);
+      Request[RequestIn] = REQUEST_DC1A;
+      increase(RequestIn, REQUEST_BUFFER_SIZE);
+      Request[RequestIn] = REQUEST_DC2V;
+      increase(RequestIn, REQUEST_BUFFER_SIZE);
+      Request[RequestIn] = REQUEST_DC2A;
+      increase(RequestIn, REQUEST_BUFFER_SIZE);
+    }
+#endif
   }
 }
+
+#ifdef PVOUTPUT
+void sendReport(void) {
+  debugV("PowerMax %0.0f MPPT1V %0.0f MPPT2V %0.0f Temp %0.0f", PowerMax, MPPT1Voltage, MPPT2Voltage, Temperature);
+  if (PowerMax > 0 || MPPT1Voltage > 0 || MPPT2Voltage > 0) {
+    char str[15];
+    int httpResponseCode;
+    String data, response;
+// https://pvoutput.org/help/api_specification.html#add-batch-status-service
+// Field              Format   Unit         Example
+// Date               yyyymmdd date         20210228
+// Time               hh:mm    time         13:00
+// Energy Generation  number   watt hours   10000
+// Power Generation   number   watts        2000
+// Energy Consumption number   watt hours   10000
+// Power Consumption  number   watts        2000
+// Temperature        decimal  celsius      23.4
+// Voltage            decimal  volts        240.7
+// Extended Value v7  number   User Defined 100.5
+// Extended Value v8  number   User Defined 328
+// Extended Value v9  number   User Defined -291
+// Extended Value v10 number   User Defined 29
+// Extended Value v11 number   User Defined 192
+// Extended Value v12 number   User Defined 9281.24
+    sprintf(str, "%04d%02d%02d,%02d:%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min);
+    data = "data=" + String(str) + "," + String(EnergyDay, 0) + "," + String(PowerMax, 0) + ",,," + String(Temperature, 1) + ",," + String(MPPT1Voltage, 1) + "," + String(MPPT1Current, 2) + "," + String(MPPT2Voltage, 1) + "," + String(MPPT2Current, 2);
+    debugI("Send data to PVOutput.org");
+    debugV("%s", data.c_str());
+// https://stackoverflow.com/questions/3677400/making-a-http-post-request-using-arduino
+    HTTPClient http;
+    http.begin("https://pvoutput.org/service/r2/addbatchstatus.jsp");
+
+    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+	  http.addHeader("X-Pvoutput-Apikey", PVO_APIkey);
+    http.addHeader("X-Pvoutput-SystemId", String(PVO_ID));
+
+    httpResponseCode = http.POST(data); //Send the actual POST request
+    debugV("HTTP response code %u", httpResponseCode);
+
+    if(httpResponseCode > 0){
+      response = http.getString();
+      debugV("HTTP response %s", response.c_str());
+    }
+    http.end();
+
+    PowerMax = 0;
+  }
+}
+#endif
 
 void sumModbusValue(float read, float &value) {
   if(!isnan(read) && !isinf(read) && read >= 0) {
@@ -434,6 +549,9 @@ void readModbus() {
           sumModbusValue(value, Power);
           if (Count == MBcount) {
             RetryErrorCount = 0;
+#ifdef PVOUTPUT
+            if (Power > PowerMax) PowerMax = Power;
+#endif
           }
           break;
         case SHOW_ENERGY:
@@ -460,6 +578,49 @@ void readModbus() {
           debugI("Modbus %u receive daily energy %0.0f Wh", i, value);
           sumModbusValue(value, EnergyDay);
           break;
+#ifdef PVOUTPUT
+        case REQUEST_Temp:
+          if (MB_EM < INVERTER_COUNT) {
+            Temperature = M[i].getValue(EM[MB_EM].Endianness, Inv[MB_EM].TemperatureDataType, Inv[MB_EM].TemperatureMultiplier);
+            debugI("Modbus %u receive temperature %0.1f °C", i, Temperature);
+            if (Temperature < 0) Temperature = 0;
+          }
+          Count++;
+          break;
+        case REQUEST_DC1V:
+          if (MB_EM < INVERTER_COUNT) {
+            MPPT1Voltage = M[i].getValue(EM[MB_EM].Endianness, Inv[MB_EM].MPPTVoltageDataType, Inv[MB_EM].MPPTVoltageMultiplier);
+            debugI("Modbus %u receive MPPT1 voltage %0.0f V", i, MPPT1Voltage);
+            if (MPPT1Voltage < 0) MPPT1Voltage = 0;
+          }
+          Count++;
+          break;
+        case REQUEST_DC1A:
+          if (MB_EM < INVERTER_COUNT) {
+            MPPT1Current = M[i].getValue(EM[MB_EM].Endianness, Inv[MB_EM].MPPTCurrentDataType, Inv[MB_EM].MPPTCurrentMultiplier);
+            debugI("Modbus %u receive MPPT1 current %0.2f A", i, MPPT1Current);
+            if (MPPT1Current < 0) MPPT1Current = 0;
+          }
+          Count++;
+          break;
+        case REQUEST_DC2V:
+          if (MB_EM < INVERTER_COUNT) {
+            MPPT2Voltage = M[i].getValue(EM[MB_EM].Endianness, Inv[MB_EM].MPPTVoltageDataType, Inv[MB_EM].MPPTVoltageMultiplier);
+            debugI("Modbus %u receive MPPT2 voltage %0.0f V", i, MPPT2Voltage);
+            if (MPPT2Voltage < 0) MPPT2Voltage = 0;
+          }
+          Count++;
+          break;
+        case REQUEST_DC2A:
+          if (MB_EM < INVERTER_COUNT) {
+            MPPT2Current = M[i].getValue(EM[MB_EM].Endianness, Inv[MB_EM].MPPTCurrentDataType, Inv[MB_EM].MPPTCurrentMultiplier);
+            debugI("Modbus %u receive MPPT2 current %0.2f A", i, MPPT2Current);
+            if (MPPT2Current < 0) MPPT2Current = 0;
+          }
+          Count++;
+          if (Count == MBcount) sendReport();
+          break;
+#endif
       }
     }
   }
@@ -553,6 +714,10 @@ void setup() {
   MBcount = preferences.getUChar("MBcount", 0);
   SmallNumbers = preferences.getBool("SmallNumbers", false);
   Intensity = preferences.getUChar("Intensity", 7);
+#ifdef PVOUTPUT
+  PVO_APIkey = preferences.getString("PVO_APIkey");
+  PVO_ID = preferences.getInt("PVO_ID");
+#endif
   preferences.end();
   RetryAfterCount = RetryAfter;
 
@@ -668,13 +833,51 @@ void requestAll (uint8_t Element) {
         M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDataType) / 2);
         debugD("Modbus %u request energy", i);
         break;
+      case SHOW_TIME:
+        Count++;
+        break;
       case SHOW_ENERGY_DAY:
         M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, EM[MB_EM].EnergyDayRegister, M[i].getDataTypeLength(EM[MB_EM].EnergyDayDataType) / 2);
         debugD("Modbus %u request daily energy", i);
         break;
+#ifdef PVOUTPUT
       default:
-        Count++;
+        if (MB_EM < INVERTER_COUNT) {
+          switch (Element) {
+            case REQUEST_Temp:
+              if (Inv[MB_EM].TemperatureRegister > 0) {
+                M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, Inv[MB_EM].TemperatureRegister, M[i].getDataTypeLength(Inv[MB_EM].TemperatureDataType) / 2);
+                debugD("Modbus %u request temperature", i);
+              } else Count++;
+              break;
+            case REQUEST_DC1V:
+              if (Inv[MB_EM].MPPT1VoltageRegister > 0) {
+                M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, Inv[MB_EM].MPPT1VoltageRegister, M[i].getDataTypeLength(Inv[MB_EM].MPPTVoltageDataType) / 2);
+                debugD("Modbus %u request MPPT 1 voltage", i);
+              } else Count++;
+              break;
+            case REQUEST_DC1A:
+              if (Inv[MB_EM].MPPT1CurrentRegister > 0) {
+                M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, Inv[MB_EM].MPPT1CurrentRegister, M[i].getDataTypeLength(Inv[MB_EM].MPPTCurrentDataType) / 2);
+                debugD("Modbus %u request MPPT 1 current", i);
+              } else Count++;
+              break;
+            case REQUEST_DC2V:
+              if (Inv[MB_EM].MPPT2VoltageRegister > 0) {
+                M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, Inv[MB_EM].MPPT2VoltageRegister, M[i].getDataTypeLength(Inv[MB_EM].MPPTVoltageDataType) / 2);
+                debugD("Modbus %u request MPPT 2 voltage", i);
+              } else Count++;
+              break;
+            case REQUEST_DC2A:
+              if (Inv[MB_EM].MPPT2CurrentRegister > 0) {
+                M[i].readInputRequest(MB[i].IP, MB[i].Unit, EM[MB_EM].Function, Inv[MB_EM].MPPT2CurrentRegister, M[i].getDataTypeLength(Inv[MB_EM].MPPTCurrentDataType) / 2);
+                debugD("Modbus %u request MPPT 2 current", i);
+              } else Count++;
+              break;
+          }
+        } else Count++;
         break;
+#endif
     }
   }
 }
