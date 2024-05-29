@@ -440,7 +440,10 @@ void increase(uint8_t &pointer, uint8_t max) {
 }
 
 void checkTime(void) {
-  if (!getLocalTime(&timeinfo)) return;
+  if (!getLocalTime(&timeinfo)) {
+    debugE("Failed to get time");
+    return;
+  }
 
   if (floor(timeinfo.tm_sec / 10) == 0) {
     if (ZeroSecond == 255) ZeroSecond = 0;
@@ -455,32 +458,64 @@ void checkTime(void) {
       EnergyDay = 0;
     }
 #ifdef PVOUTPUT
-    // Send statistic every 5 minutes
-    if (!(timeinfo.tm_min % 5) && PVO_APIkey && PVO_ID) {
-      Request[RequestIn] = SHOW_ENERGY_DAY;
-      increase(RequestIn, REQUEST_BUFFER_SIZE);
-      Request[RequestIn] = REQUEST_Temp;
-      increase(RequestIn, REQUEST_BUFFER_SIZE);
-      Request[RequestIn] = REQUEST_DC1V;
-      increase(RequestIn, REQUEST_BUFFER_SIZE);
-      Request[RequestIn] = REQUEST_DC1A;
-      increase(RequestIn, REQUEST_BUFFER_SIZE);
-      Request[RequestIn] = REQUEST_DC2V;
-      increase(RequestIn, REQUEST_BUFFER_SIZE);
-      Request[RequestIn] = REQUEST_DC2A;
-      increase(RequestIn, REQUEST_BUFFER_SIZE);
+    if (PVO_APIkey && PVO_ID) {
+      // Send summary at the end of the day when no energy was generated
+      if (timeinfo.tm_hour == 23 && timeinfo.tm_min == 55 && EnergyDay == 0) {
+        sendPVO("0");
+      }
+      // Send statistic every 5 minutes
+      if (!(timeinfo.tm_min % 5)) {
+        Request[RequestIn] = SHOW_ENERGY_DAY;
+        increase(RequestIn, REQUEST_BUFFER_SIZE);
+        Request[RequestIn] = REQUEST_Temp;
+        increase(RequestIn, REQUEST_BUFFER_SIZE);
+        Request[RequestIn] = REQUEST_DC1V;
+        increase(RequestIn, REQUEST_BUFFER_SIZE);
+        Request[RequestIn] = REQUEST_DC1A;
+        increase(RequestIn, REQUEST_BUFFER_SIZE);
+        Request[RequestIn] = REQUEST_DC2V;
+        increase(RequestIn, REQUEST_BUFFER_SIZE);
+        Request[RequestIn] = REQUEST_DC2A;
+        increase(RequestIn, REQUEST_BUFFER_SIZE);
+      }
     }
 #endif
   }
 }
 
 #ifdef PVOUTPUT
+void sendPVO(String data) {
+  char str[15];
+  int httpResponseCode;
+  String response;
+
+  sprintf(str, "%04d%02d%02d,%02d:%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min);
+  data = "data=" + String(str) + "," + data;
+
+  debugI("Send data to PVOutput.org");
+  debugV("%s", data.c_str());
+
+  // https://stackoverflow.com/questions/3677400/making-a-http-post-request-using-arduino
+  HTTPClient http;
+  http.begin("https://pvoutput.org/service/r2/addbatchstatus.jsp");
+
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+  http.addHeader("X-Pvoutput-Apikey", PVO_APIkey);
+  http.addHeader("X-Pvoutput-SystemId", String(PVO_ID));
+
+  httpResponseCode = http.POST(data); //Send the actual POST request
+  debugV("HTTP response code %u", httpResponseCode);
+
+  if(httpResponseCode > 0){
+    response = http.getString();
+    debugV("HTTP response %s", response.c_str());
+  }
+  http.end();
+}
+
 void sendReport(void) {
   debugV("PowerMax %0.0f MPPT1V %0.0f MPPT2V %0.0f Temp %0.0f", PowerMax, MPPT1Voltage, MPPT2Voltage, Temperature);
   if (PowerMax > 0 || MPPT1Voltage > 0 || MPPT2Voltage > 0) {
-    char str[15];
-    int httpResponseCode;
-    String data, response;
 // https://pvoutput.org/help/api_specification.html#add-batch-status-service
 // Field              Format   Unit         Example
 // Date               yyyymmdd date         20210228
@@ -497,26 +532,7 @@ void sendReport(void) {
 // Extended Value v10 number   User Defined 29
 // Extended Value v11 number   User Defined 192
 // Extended Value v12 number   User Defined 9281.24
-    sprintf(str, "%04d%02d%02d,%02d:%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min);
-    data = "data=" + String(str) + "," + String(EnergyDay, 0) + "," + String(PowerMax, 0) + ",,," + String(Temperature, 1) + ",," + String(MPPT1Voltage, 1) + "," + String(MPPT1Current, 2) + "," + String(MPPT2Voltage, 1) + "," + String(MPPT2Current, 2);
-    debugI("Send data to PVOutput.org");
-    debugV("%s", data.c_str());
-// https://stackoverflow.com/questions/3677400/making-a-http-post-request-using-arduino
-    HTTPClient http;
-    http.begin("https://pvoutput.org/service/r2/addbatchstatus.jsp");
-
-    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-	  http.addHeader("X-Pvoutput-Apikey", PVO_APIkey);
-    http.addHeader("X-Pvoutput-SystemId", String(PVO_ID));
-
-    httpResponseCode = http.POST(data); //Send the actual POST request
-    debugV("HTTP response code %u", httpResponseCode);
-
-    if(httpResponseCode > 0){
-      response = http.getString();
-      debugV("HTTP response %s", response.c_str());
-    }
-    http.end();
+    sendPVO(String(EnergyDay, 0) + "," + String(PowerMax, 0) + ",,," + String(Temperature, 1) + ",," + String(MPPT1Voltage, 1) + "," + String(MPPT1Current, 2) + "," + String(MPPT2Voltage, 1) + "," + String(MPPT2Current, 2));
 
     PowerMax = 0;
   }
@@ -590,7 +606,7 @@ void readModbus() {
         case REQUEST_DC1V:
           if (MB_EM < INVERTER_COUNT) {
             MPPT1Voltage = M[i].getValue(EM[MB_EM].Endianness, Inv[MB_EM].MPPTVoltageDataType, Inv[MB_EM].MPPTVoltageMultiplier);
-            debugI("Modbus %u receive MPPT1 voltage %0.0f V", i, MPPT1Voltage);
+            debugI("Modbus %u receive MPPT 1 voltage %0.0f V", i, MPPT1Voltage);
             if (MPPT1Voltage < 0) MPPT1Voltage = 0;
           }
           Count++;
@@ -598,7 +614,7 @@ void readModbus() {
         case REQUEST_DC1A:
           if (MB_EM < INVERTER_COUNT) {
             MPPT1Current = M[i].getValue(EM[MB_EM].Endianness, Inv[MB_EM].MPPTCurrentDataType, Inv[MB_EM].MPPTCurrentMultiplier);
-            debugI("Modbus %u receive MPPT1 current %0.2f A", i, MPPT1Current);
+            debugI("Modbus %u receive MPPT 1 current %0.2f A", i, MPPT1Current);
             if (MPPT1Current < 0) MPPT1Current = 0;
           }
           Count++;
@@ -606,7 +622,7 @@ void readModbus() {
         case REQUEST_DC2V:
           if (MB_EM < INVERTER_COUNT) {
             MPPT2Voltage = M[i].getValue(EM[MB_EM].Endianness, Inv[MB_EM].MPPTVoltageDataType, Inv[MB_EM].MPPTVoltageMultiplier);
-            debugI("Modbus %u receive MPPT2 voltage %0.0f V", i, MPPT2Voltage);
+            debugI("Modbus %u receive MPPT 2 voltage %0.0f V", i, MPPT2Voltage);
             if (MPPT2Voltage < 0) MPPT2Voltage = 0;
           }
           Count++;
@@ -614,7 +630,7 @@ void readModbus() {
         case REQUEST_DC2A:
           if (MB_EM < INVERTER_COUNT) {
             MPPT2Current = M[i].getValue(EM[MB_EM].Endianness, Inv[MB_EM].MPPTCurrentDataType, Inv[MB_EM].MPPTCurrentMultiplier);
-            debugI("Modbus %u receive MPPT2 current %0.2f A", i, MPPT2Current);
+            debugI("Modbus %u receive MPPT 2 current %0.2f A", i, MPPT2Current);
             if (MPPT2Current < 0) MPPT2Current = 0;
           }
           Count++;
