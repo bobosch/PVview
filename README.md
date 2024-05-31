@@ -9,17 +9,19 @@ An Ethernet only PV display - POE powered and using Modbus TCP to get data from 
 - Modbus TCP
 - Automatic prefixes (W, kW, MW, ...)
 - Display cycle between power, energy and time (configurable)
+- Supports one or two lines
 - Read multiple inverters and sum values
 - Web interface
 - Firmware over-the-air updates (/serverIndex)
 - Debug with telnet
+- PVOutput upload
 
 ## Supported devices
 
 - Modbus TCP inverter
   - Fronius Symo
   - Sungrow
-  - Sunny WebBox
+  - SMA Sunny
 - Modbus RTU electric meter (over Modbus TCP gateway)
   - ABB B23 212-100
   - Eastron SDM630
@@ -40,8 +42,3 @@ An Ethernet only PV display - POE powered and using Modbus TCP to get data from 
 - MD_Parola by majicDesigns
 - RemoteDebug by Joao Lopes
 - https://github.com/espressif/arduino-esp32
-
-# ToDo
-
-- Sleep at night (the ESP32...)
-- Support multiple lines

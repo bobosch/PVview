@@ -143,6 +143,7 @@ WebServer server(80);
 RemoteDebug Debug;
 
 #ifdef PVOUTPUT
+#define PVO_BUFFER_SIZE 256
 #include <HTTPClient.h>
 // Aditional information from inverter
 const struct {
@@ -164,9 +165,10 @@ const struct {
     { MB_SINT32,  -2,   30771, 30959, MB_SINT32, -3,   30769, 30957, MB_SINT32, -1, 30953 }, // (0,01V / mA)
     { MB_SINT32,   0,       0,     0, MB_SINT32,  0,       0,     0, MB_UINT16,  0,     0 },
 };
+uint8_t PVOIn = 0, PVOOut = 0;
 int PVO_ID;
 float MPPT1Current = 0, MPPT1Voltage = 0, MPPT2Current = 0, MPPT2Voltage = 0, PowerMax = 0, Temperature= 0;
-String PVO_APIkey;
+String PVO_APIkey, PVO[PVO_BUFFER_SIZE];
 #endif
 
 const char* serverIndex =
@@ -393,6 +395,7 @@ void handleSettings() {
   " <fieldset><legend>PVOutput</legend>"
   " <div><label for='PVO_APIkey'>API key</label><input type='text' id='PVO_APIkey' name='PVO_APIkey' value='" + PVO_APIkey + "'/></div>"
   " <div><label for='PVO_ID'>System ID</label><input type='text' id='PVO_ID' name='PVO_ID' value='" + String(PVO_ID) + "'/></div>"
+  " <a href='/PVObuffer'>Unsent buffer</a>"
   " </fieldset>"
 #endif
   " <div><input type='hidden' name='Send' value='1' /><input type='submit' value='Save' /></div>"
@@ -436,7 +439,8 @@ void printTime(char *str){
 }
 
 void increase(uint8_t &pointer, uint8_t max) {
-  pointer = (pointer + 1) % max;
+  pointer++;
+  if (pointer == max) pointer = 0;
 }
 
 void checkTime(void) {
@@ -461,7 +465,7 @@ void checkTime(void) {
     if (PVO_APIkey && PVO_ID) {
       // Send summary at the end of the day when no energy was generated
       if (timeinfo.tm_hour == 23 && timeinfo.tm_min == 55 && EnergyDay == 0) {
-        sendPVO("0");
+        sendReport(true);
       }
       // Send statistic every 5 minutes
       if (!(timeinfo.tm_min % 5)) {
@@ -484,13 +488,34 @@ void checkTime(void) {
 }
 
 #ifdef PVOUTPUT
-void sendPVO(String data) {
-  char str[15];
-  int httpResponseCode;
-  String response;
+void handlePVObuffer(void) {
+  uint8_t PVOTemp;
+  String data = "";
 
-  sprintf(str, "%04d%02d%02d,%02d:%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min);
-  data = "data=" + String(str) + "," + data;
+  PVOTemp = PVOOut;
+  while (PVOIn != PVOTemp) {
+    data += PVO[PVOTemp] + "\n";
+    increase(PVOTemp, PVO_BUFFER_SIZE);
+  }
+
+  server.send(200, "text/plain", data);
+}
+
+void sendPVO(void) {
+  uint8_t PVOCount, PVOTemp;
+  int httpResponseCode;
+  String data, response;
+
+  PVOCount = 1;
+  PVOTemp = PVOOut;
+  data = "data=" + PVO[PVOTemp];
+  increase(PVOTemp, PVO_BUFFER_SIZE);
+
+  while ((PVOIn != PVOTemp) && PVOCount < 30) {
+    PVOCount++;
+    data += ";" + PVO[PVOTemp];
+    increase(PVOTemp, PVO_BUFFER_SIZE);
+  }
 
   debugI("Send data to PVOutput.org");
   debugV("%s", data.c_str());
@@ -511,11 +536,17 @@ void sendPVO(String data) {
     debugV("HTTP response %s", response.c_str());
   }
   http.end();
+
+  if (httpResponseCode == 200) {
+    PVOOut = PVOTemp;
+  }
 }
 
-void sendReport(void) {
+void sendReport(bool ZeroDay) {
+  char str[15];
+  uint8_t i;
   debugV("PowerMax %0.0f MPPT1V %0.0f MPPT2V %0.0f Temp %0.0f", PowerMax, MPPT1Voltage, MPPT2Voltage, Temperature);
-  if (PowerMax > 0 || MPPT1Voltage > 0 || MPPT2Voltage > 0) {
+  if (PowerMax > 0 || MPPT1Voltage > 0 || MPPT2Voltage > 0 || ZeroDay) {
 // https://pvoutput.org/help/api_specification.html#add-batch-status-service
 // Field              Format   Unit         Example
 // Date               yyyymmdd date         20210228
@@ -532,7 +563,18 @@ void sendReport(void) {
 // Extended Value v10 number   User Defined 29
 // Extended Value v11 number   User Defined 192
 // Extended Value v12 number   User Defined 9281.24
-    sendPVO(String(EnergyDay, 0) + "," + String(PowerMax, 0) + ",,," + String(Temperature, 1) + ",," + String(MPPT1Voltage, 1) + "," + String(MPPT1Current, 2) + "," + String(MPPT2Voltage, 1) + "," + String(MPPT2Current, 2));
+
+    // Date & Time
+    sprintf(str, "%04d%02d%02d,%02d:%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min);
+    // Add to buffer
+    if (ZeroDay) {
+      PVO[PVOIn] = String(str) + ",0";
+    } else {
+      PVO[PVOIn] = String(str) + "," + String(EnergyDay, 0) + "," + String(PowerMax, 0) + ",,," + String(Temperature, 1) + ",," + String(MPPT1Voltage, 1) + "," + String(MPPT1Current, 2) + "," + String(MPPT2Voltage, 1) + "," + String(MPPT2Current, 2);
+    }
+    increase(PVOIn, PVO_BUFFER_SIZE);
+
+    sendPVO();
 
     PowerMax = 0;
   }
@@ -634,7 +676,7 @@ void readModbus() {
             if (MPPT2Current < 0) MPPT2Current = 0;
           }
           Count++;
-          if (Count == MBcount) sendReport();
+          if (Count == MBcount) sendReport(false);
           break;
 #endif
       }
@@ -786,6 +828,11 @@ void setup() {
   // Preferences
   server.on("/settings", handleSettings);
 
+#ifdef PVOUTPUT
+  // PVOutput buffer
+  server.on("/PVObuffer", handlePVObuffer);
+
+#endif
   // Start the Ethernet web server
   server.begin();
 
