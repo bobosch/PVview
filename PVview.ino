@@ -129,10 +129,10 @@ const char prefixes[] = " kMGTPEZYRQ";
 
 bool SmallNumbers;
 char message[LINES][15];
-uint8_t Count, cycle = 0, Cycles[LINES], digitsW, digitsWh, digitsWhd, eth_status = ETH_DISCONNECTED, Intensity, Interval, MBcount;
+uint8_t Count, cycle = 0, Cycles[LINES], digitsW, digitsWh, digitsWhd, eth_status = ETH_DISCONNECTED, Intensity, IntensityMin, Interval, MBcount;
 uint8_t RetryAfter, RetryAfterCount, RetryError, RetryErrorCount = 0, Request[REQUEST_BUFFER_SIZE], RequestIn = 0, RequestOut = 0, ZeroSecond = 255;
 unsigned long timer = LONG_MAX, RequestTimer = LONG_MAX;
-float AddEnergy, Energy = 0, EnergyDay = 0, MultiplyEnergy, Power = 0, Sum;
+float AddEnergy, Energy = 0, EnergyDay = 0, IntensityMaxPower, MultiplyEnergy, Power = 0, Sum;
 String Hostname, NTPServer;
 
 struct tm timeinfo;
@@ -276,6 +276,14 @@ void handleSettings() {
     debugD("New Intensity %u", Intensity);
     P.setIntensity(Intensity);
     preferences.putUChar("Intensity", Intensity);
+    // IntensityMaxPower
+    IntensityMaxPower = server.arg("IntensityMaxPower").toFloat();
+    debugD("New IntensityMaxPower %0.0f", IntensityMaxPower);
+    preferences.putFloat("IntensityMaxPow", IntensityMaxPower);
+    // IntensityMin
+    IntensityMin = server.arg("IntensityMin").toInt() % 16;
+    debugD("New IntensityMin %u", IntensityMin);
+    preferences.putUChar("IntensityMin", IntensityMin);
 #ifdef PVOUTPUT
     // PVO API key
     PVO_APIkey = server.arg("PVO_APIkey");
@@ -390,6 +398,8 @@ void handleSettings() {
   " <div><label for='MultiplyEnergy'>Multiply energy with factor</label><input type='text' id='MultiplyEnergy' name='MultiplyEnergy' value='" + String(MultiplyEnergy, 6) + "'/></div>"
   " <div><label for='SmallNumbers'>Small numbers</label><input type='checkbox' id='SmallNumbers' name='SmallNumbers' value='1'" + CheckSmallNumbers + "/></div>"
   " <div><label for='Intensity'>Intensity (0-15)</label><input type='text' id='Intensity' name='Intensity' value='" + String(Intensity) + "'/></div>"
+  " <div><label for='IntensityMaxPower'>Reduce intensity below power (0 = off)</label><input type='text' id='IntensityMaxPower' name='IntensityMaxPower' value='" + String(IntensityMaxPower, 0) + "'/></div>"
+  " <div><label for='IntensityMin'>Minimum intensity (0-15)</label><input type='text' id='IntensityMin' name='IntensityMin' value='" + String(IntensityMin) + "'/></div>"
   " </fieldset>"
 #ifdef PVOUTPUT
   " <fieldset><legend>PVOutput</legend>"
@@ -607,6 +617,10 @@ void readModbus() {
           sumModbusValue(value, Power);
           if (Count == MBcount) {
             RetryErrorCount = 0;
+            if (IntensityMaxPower > 0) {
+              if (Power < IntensityMaxPower && (Intensity - IntensityMin) > 0) P.setIntensity((uint8_t)((Power / (IntensityMaxPower / (Intensity - IntensityMin))) + IntensityMin + 0.5));
+              else P.setIntensity(Intensity);
+            }
 #ifdef PVOUTPUT
             if (Power > PowerMax) PowerMax = Power;
 #endif
@@ -772,6 +786,8 @@ void setup() {
   MBcount = preferences.getUChar("MBcount", 0);
   SmallNumbers = preferences.getBool("SmallNumbers", false);
   Intensity = preferences.getUChar("Intensity", 7);
+  IntensityMaxPower = preferences.getFloat("IntensityMaxPow", 0);
+  IntensityMin = preferences.getUChar("IntensityMin", 0);
 #ifdef PVOUTPUT
   PVO_APIkey = preferences.getString("PVO_APIkey");
   PVO_ID = preferences.getInt("PVO_ID");
