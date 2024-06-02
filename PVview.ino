@@ -593,6 +593,11 @@ void sendReport(bool ZeroDay) {
       PVO[PVOIn] = String(str) + "," + String(EnergyDay, 0) + "," + String(PowerMax, 0) + ",,," + String(Temperature, 1) + ",," + String(MPPT1Voltage, 1) + "," + String(MPPT1Current, 2) + "," + String(MPPT2Voltage, 1) + "," + String(MPPT2Current, 2);
     }
     increase(PVOIn, PVO_BUFFER_SIZE);
+    // Move OUT pointer in case of buffer is full
+    if (PVOIn == PVOOut) {
+      debugE("PVO buffer full");
+      increase(PVOOut, PVO_BUFFER_SIZE);
+    }
 
     sendPVO();
 
@@ -1011,6 +1016,11 @@ void PVview() {
       if (Request[RequestIn] != Element && (Request[RequestIn] == SHOW_POWER || Power)) {
         Element = Request[RequestIn];
         increase(RequestIn, REQUEST_BUFFER_SIZE);
+        // Move OUT pointer in case of buffer is full
+        if (RequestIn == RequestOut) {
+          debugE("Request buffer full");
+          increase(RequestOut, REQUEST_BUFFER_SIZE);
+        }
       }
       Cycles[l] = cycle;
 #ifndef SPLIT_LINE
