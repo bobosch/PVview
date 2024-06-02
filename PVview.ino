@@ -259,14 +259,17 @@ void handleSettings() {
     preferences.putString("NTPServer", NTPServer);
     // Interval
     Interval = server.arg("Interval").toInt();
+    if (Interval < 1) Interval = 1;
     debugD("New Interval %u s", Interval);
     preferences.putUChar("Interval", Interval);
     // RetryAfter
     RetryAfter = server.arg("RetryAfter").toInt();
+    if (RetryAfter < 1) RetryAfter = 1;
     debugD("New RetryAfter %u", RetryAfter);
     preferences.putUChar("RetryAfter", RetryAfter);
     // RetryError
     RetryError = server.arg("RetryError").toInt();
+    if (RetryError < 1) RetryError = 1;
     debugD("New RetryError %u", RetryError);
     preferences.putUChar("RetryError", RetryError);
     // AddEnergy
@@ -1003,9 +1006,12 @@ uint8_t getNextElement (void) {
 
 void PVview() {
   uint8_t Element = 255, l = 0;
+  uint16_t diff;
 
   // Wait INTERVAL (a bit earlier for modbus request)
-  if (millis() - timer > ((uint16_t)Interval * 1000) - ((LINES + 1) * 400)) {
+  if (Interval <= LINES) diff = (uint16_t)Interval * 600;
+  else diff = ((uint16_t)Interval * 1000) - (LINES * 500);
+  if (millis() - timer > diff) {
     timer = millis();
 
 #ifndef SPLIT_LINE
