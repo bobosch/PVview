@@ -223,6 +223,16 @@ String htmlSelect(String Name, const String Options[], uint8_t OptionsSize, uint
   return htmlSelect(Name, Options, OptionsSize, Selected, "");
 }
 
+void setIntensity(void) {
+  if (Power < IntensityMaxPower && (Intensity - IntensityMin) > 0) {
+    uint8_t i;
+    i = (uint8_t)((Power / (IntensityMaxPower / (Intensity - IntensityMin))) + IntensityMin + 0.5);
+    debugV("Set decreased intensity %u", i);
+    P.setIntensity(i);
+  }
+  else P.setIntensity(Intensity);
+}
+
 // HTTP handlers
 void handleRoot() {
   server.send(200, "text/plain", "Hello from wESP32!\n");
@@ -264,7 +274,7 @@ void handleSettings() {
     debugD("New AddEnergy %0.0f Wh", AddEnergy);
     preferences.putFloat("AddEnergy", AddEnergy);
     // MultiplyEnergy
-    MultiplyEnergy = server.arg("MultiplyEnergy").toFloat();
+    MultiplyEnergy = abs(server.arg("MultiplyEnergy").toFloat());
     debugD("New MultiplyEnergy %0.6f", MultiplyEnergy);
     preferences.putFloat("MultiplyEnergy", MultiplyEnergy);
     // CheckSmallNumbers
@@ -274,16 +284,16 @@ void handleSettings() {
     // Intensity
     Intensity = server.arg("Intensity").toInt() % 16;
     debugD("New Intensity %u", Intensity);
-    P.setIntensity(Intensity);
     preferences.putUChar("Intensity", Intensity);
     // IntensityMaxPower
-    IntensityMaxPower = server.arg("IntensityMaxPower").toFloat();
+    IntensityMaxPower = abs(server.arg("IntensityMaxPower").toFloat());
     debugD("New IntensityMaxPower %0.0f", IntensityMaxPower);
     preferences.putFloat("IntensityMaxPow", IntensityMaxPower);
     // IntensityMin
     IntensityMin = server.arg("IntensityMin").toInt() % 16;
     debugD("New IntensityMin %u", IntensityMin);
     preferences.putUChar("IntensityMin", IntensityMin);
+    setIntensity();
 #ifdef PVOUTPUT
     // PVO API key
     PVO_APIkey = server.arg("PVO_APIkey");
@@ -618,8 +628,7 @@ void readModbus() {
           if (Count == MBcount) {
             RetryErrorCount = 0;
             if (IntensityMaxPower > 0) {
-              if (Power < IntensityMaxPower && (Intensity - IntensityMin) > 0) P.setIntensity((uint8_t)((Power / (IntensityMaxPower / (Intensity - IntensityMin))) + IntensityMin + 0.5));
-              else P.setIntensity(Intensity);
+              setIntensity();
             }
 #ifdef PVOUTPUT
             if (Power > PowerMax) PowerMax = Power;
@@ -862,7 +871,6 @@ void setup() {
 
   // Matrix display
   P.begin(LINES);
-  P.setIntensity(Intensity);
 
   // Matrix font width
 #if WIDTH <= 4
@@ -884,7 +892,7 @@ void setup() {
 #endif
 
   // Matrix intensity
-  P.setIntensity(Intensity);
+  setIntensity();
 
   cycle = ARRAY_SIZE(Show) - 1;
   for (uint8_t i = 0; i < MB_COUNT; i++) {
