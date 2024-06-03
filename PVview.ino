@@ -590,10 +590,11 @@ void sendReport(bool ZeroDay) {
     // Date & Time
     sprintf(str, "%04d%02d%02d,%02d:%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min);
     // Add to buffer
-    if (ZeroDay) {
-      PVO[PVOIn] = String(str) + ",0";
-    } else {
-      PVO[PVOIn] = String(str) + "," + String(EnergyDay, 0) + "," + String(PowerMax, 0) + ",,," + String(Temperature, 1) + ",," + String(MPPT1Voltage, 1) + "," + String(MPPT1Current, 2) + "," + String(MPPT2Voltage, 1) + "," + String(MPPT2Current, 2);
+    // Date, Time, Energy, Power
+    PVO[PVOIn] = String(str) + "," + String(EnergyDay, 0) + "," + String(PowerMax, 0);
+    if(!ZeroDay) {
+      // , Energy, Power, Temperature, Voltage, Extended v7, Extended v8, Extended v9, Extended v10
+      PVO[PVOIn] += ",,," + (isnan(Temperature) ? "" : String(Temperature, 1)) + ",," + String(MPPT1Voltage, 1) + "," + String(MPPT1Current, 2) + "," + String(MPPT2Voltage, 1) + "," + String(MPPT2Current, 2);
     }
     increase(PVOIn, PVO_BUFFER_SIZE);
     // Move OUT pointer in case of buffer is full
@@ -672,7 +673,7 @@ void readModbus() {
           if (MB_EM < INVERTER_COUNT) {
             Temperature = M[i].getValue(EM[MB_EM].Endianness, Inv[MB_EM].TemperatureDataType, Inv[MB_EM].TemperatureMultiplier);
             debugI("Modbus %u receive temperature %0.1f °C", i, Temperature);
-            if (Temperature < 0) Temperature = 0;
+            if (abs(Temperature) > 100) Temperature = NAN;
           }
           Count++;
           break;
