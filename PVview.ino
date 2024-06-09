@@ -407,8 +407,8 @@ void handleSettings() {
   " <div><label for='Interval'>Cycle after (s)</label><input type='text' id='Interval' name='Interval' value='" + String(Interval) + "'/></div>"
   " <div><label for='RetryAfter'>Maximum cycles without power request</label><input type='text' id='RetryAfter' name='RetryAfter' value='" + String(RetryAfter) + "'/></div>"
   " <div><label for='RetryError'>Minimum cycles with error before clear power value</label><input type='text' id='RetryError' name='RetryError' value='" + String(RetryError) + "'/></div>"
-  " <div><label for='AddEnergy'>Add constant energy (kWh)</label><input type='text' id='AddEnergy' name='AddEnergy' value='" + String(AddEnergy / 1000) + "'/></div>"
   " <div><label for='MultiplyEnergy'>Multiply energy with factor</label><input type='text' id='MultiplyEnergy' name='MultiplyEnergy' value='" + String(MultiplyEnergy, 6) + "'/></div>"
+  " <div><label for='AddEnergy'>Add constant energy (kWh)</label><input type='text' id='AddEnergy' name='AddEnergy' value='" + String(AddEnergy / 1000, 0) + "'/></div>"
   " <div><label for='SmallNumbers'>Small numbers</label><input type='checkbox' id='SmallNumbers' name='SmallNumbers' value='1'" + CheckSmallNumbers + "/></div>"
   " <div><label for='Intensity'>Intensity (0-15)</label><input type='text' id='Intensity' name='Intensity' value='" + String(Intensity) + "'/></div>"
   " <div><label for='IntensityMaxPower'>Reduce intensity below power (0 = off)</label><input type='text' id='IntensityMaxPower' name='IntensityMaxPower' value='" + String(IntensityMaxPower, 0) + "'/></div>"
@@ -656,7 +656,7 @@ void readModbus() {
               Energy *= MultiplyEnergy;
               debugI("Corrected with factor %0.6f energy %0.0f Wh", MultiplyEnergy, Energy);
             }
-            if (AddEnergy > 0) {
+            if (AddEnergy != 0) {
               debugI("Add constant energy %0.0f Wh", AddEnergy);
               Energy += AddEnergy;
               debugI("Total energy %0.0f Wh", Energy);
