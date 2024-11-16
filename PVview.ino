@@ -243,6 +243,7 @@ void handleNotFound() {
 void handleSettings() {
   uint8_t clear, MBEdit, ShowEdit, i;
   String CheckSmallNumbers = "", TableMB = "", TableShow = "";
+  String StrPower, StrEnergyDay, StrEnergy;
 
   // Save settings
   String Send = server.arg("Send");
@@ -385,22 +386,28 @@ void handleSettings() {
     }
   }
   if (MBcount < MB_COUNT) TableMB += "<tr><td></td><td></td><td></td><td><a href='?MBNew=1'>New</a></td></tr>";
+  printModbus(message[0], Power, "W", 3);
+  StrPower = String(message[0]);
+  printModbus(message[0], EnergyDay, "Wh", 3);
+  StrEnergyDay = String(message[0]);
+  printModbus(message[0], Energy, "Wh", 3);
+  StrEnergy = String(message[0]);
   server.send(200, "text/html",
   "<html>"
   "<head><style>"
   " form {}"
   " div { clear: both; }"
   " label { float: left; margin: 4px 0; width: 160px; }"
-  " input, fieldset p { margin: 4px 0; }"
+  " input, fieldset span { display: inline-block; margin: 4px 0; }"
   " table { border-collapse: collapse; }"
   " th, td { border: 1px solid; padding: 3px 6px; }"
   " .IP input { width:40px; }"
   "</style></head>"
   "<body>"
   " <fieldset><legend>Measurements</legend>"
-  "  <p>Power: " + String(Power, 0) + " W</p>"
-  "  <p>Daily Energy: " + String(EnergyDay, 0) + " Wh</p>"
-  "  <p>Total Energy: " + String(Energy, 0) + " Wh</p>"
+  "  <div><label>Power</label><span>" + StrPower + " (" + String(Power, 0) + " W)</span></div>"
+  "  <div><label>Daily Energy</label><span>" + StrEnergyDay + " (" + String(EnergyDay, 0) + " Wh)</span></div>"
+  "  <div><label>Total Energy</label><span>" + StrEnergy + " (" + String(Energy, 0) + " Wh)</span></div>"
   " </fieldset>"
   " <form method='POST' action='/' enctype='multipart/form-data'>"
   "  <fieldset><legend>Network</legend>"
@@ -408,7 +415,7 @@ void handleSettings() {
   "   <div><label for='Hostname'>Hostname</label><input type='text' id='Hostname' name='Hostname' value='" + Hostname + "'/></div>"
   "   <div><label for='NTPServer'>NTPServer</label><input type='text' id='NTPServer' name='NTPServer' value='" + NTPServer + "'/></div>"
   "  </fieldset>"
-  "  <fieldset><legend>Display</legend>"
+  "  <fieldset><legend>Display (" + String(WIDTH) + " x " + String(LINES) + ")</legend>"
   "   <div><label for='Interval'>Cycle after (s)</label><input type='text' id='Interval' name='Interval' value='" + String(Interval) + "'/></div>"
   "   <div><label for='RetryAfter'>Maximum cycles without power request</label><input type='text' id='RetryAfter' name='RetryAfter' value='" + String(RetryAfter) + "'/></div>"
   "   <div><label for='RetryError'>Minimum cycles with error before clear power value</label><input type='text' id='RetryError' name='RetryError' value='" + String(RetryError) + "'/></div>"
