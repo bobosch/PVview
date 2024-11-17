@@ -22,7 +22,7 @@
 #define CS_PIN 5
 
 // Application settings
-//#define PVOUTPUT
+#define PVOUTPUT
 #define REQUEST_BUFFER_SIZE 10
 
 #define SHOW_POWER 0
@@ -415,12 +415,14 @@ void handleSettings() {
   "   <div><label for='Hostname'>Hostname</label><input type='text' id='Hostname' name='Hostname' value='" + Hostname + "'/></div>"
   "   <div><label for='NTPServer'>NTPServer</label><input type='text' id='NTPServer' name='NTPServer' value='" + NTPServer + "'/></div>"
   "  </fieldset>"
+  "  <fieldset><legend>Value calculation</legend>"
+  "   <div><label for='MultiplyEnergy'>Multiply energy with factor</label><input type='text' id='MultiplyEnergy' name='MultiplyEnergy' value='" + String(MultiplyEnergy, 6) + "'/></div>"
+  "   <div><label for='AddEnergy'>Add constant energy (kWh)</label><input type='text' id='AddEnergy' name='AddEnergy' value='" + String(AddEnergy / 1000, 0) + "'/></div>"
+  "  </fieldset>"
   "  <fieldset><legend>Display (" + String(WIDTH) + " x " + String(LINES) + ")</legend>"
   "   <div><label for='Interval'>Cycle after (s)</label><input type='text' id='Interval' name='Interval' value='" + String(Interval) + "'/></div>"
   "   <div><label for='RetryAfter'>Maximum cycles without power request</label><input type='text' id='RetryAfter' name='RetryAfter' value='" + String(RetryAfter) + "'/></div>"
   "   <div><label for='RetryError'>Minimum cycles with error before clear power value</label><input type='text' id='RetryError' name='RetryError' value='" + String(RetryError) + "'/></div>"
-  "   <div><label for='MultiplyEnergy'>Multiply energy with factor</label><input type='text' id='MultiplyEnergy' name='MultiplyEnergy' value='" + String(MultiplyEnergy, 6) + "'/></div>"
-  "   <div><label for='AddEnergy'>Add constant energy (kWh)</label><input type='text' id='AddEnergy' name='AddEnergy' value='" + String(AddEnergy / 1000, 0) + "'/></div>"
   "   <div><label for='SmallNumbers'>Small numbers</label><input type='checkbox' id='SmallNumbers' name='SmallNumbers' value='1'" + CheckSmallNumbers + "/></div>"
   "   <div><label for='Intensity'>Intensity (0-15)</label><input type='text' id='Intensity' name='Intensity' value='" + String(Intensity) + "'/></div>"
   "   <div><label for='IntensityMaxPower'>Reduce intensity below power (0 = off)</label><input type='text' id='IntensityMaxPower' name='IntensityMaxPower' value='" + String(IntensityMaxPower, 0) + "'/></div>"
