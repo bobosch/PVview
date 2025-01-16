@@ -2,7 +2,7 @@
 #define _MODBUS_H_
 
 #include "Arduino.h"
-#include <ETH.h>
+#include <WiFi.h>
 
 typedef enum mb_endianess {
   MB_LBF_LWF = 0,

@@ -3,12 +3,12 @@
 #include <ESPmDNS.h>
 #include <Update.h>
 #include <time.h>
-
 #include <MD_MAX72xx.h>
 #include <MD_Parola.h>
-#include "modbus.h"
-#include "RemoteDebug.h" // https://github.com/JoaoLopesF/RemoteDebug
+#include <RemoteDebug.h> // https://github.com/JoaoLopesF/RemoteDebug
 #include <Preferences.h> // https://randomnerdtutorials.com/esp32-save-data-permanently-preferences/
+
+#include "modbus.h"
 
 //#define DEBUG_DISABLED
 
@@ -830,7 +830,7 @@ void setup() {
   WiFi.onEvent(WiFiEvent);
 
   // Start the Ethernet, revision 7+ uses RTL8201
-  ETH.begin(0, -1, 16, 17, ETH_PHY_RTL8201);
+  ETH.begin(ETH_PHY_RTL8201, 0, 16, 17, -1, ETH_CLOCK_GPIO0_IN);
 
   // Init and get the time
   configTzTime("CET-1CEST,M3.5.0/02,M10.5.0/03", NTPServer.c_str());
