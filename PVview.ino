@@ -1,6 +1,5 @@
 #include <ETH.h>
 #include <WebServer.h>
-#include <ESPmDNS.h>
 #include <Update.h>
 #include <time.h>
 #include <MD_MAX72xx.h>
@@ -870,14 +869,8 @@ void setup() {
   // Init and get the time
   configTzTime("CET-1CEST,M3.5.0/02,M10.5.0/03", NTPServer.c_str());
 
-  // You can browse to wesp32demo.local with this
-  MDNS.begin("wesp32demo");
-
   // Start webserver
   webServerInit();
-
-  // Add service to MDNS-SD
-  MDNS.addService("http", "tcp", 80);
 
   // Debug
   Debug.begin(Hostname, 23, 3);
