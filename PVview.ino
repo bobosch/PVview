@@ -8,6 +8,7 @@
 #include <RemoteDebug.h> // https://github.com/JoaoLopesF/RemoteDebug
 #include <Preferences.h> // https://randomnerdtutorials.com/esp32-save-data-permanently-preferences/
 
+#include "html.h"
 #include "modbus.h"
 
 //#define DEBUG_DISABLED
@@ -171,43 +172,6 @@ float MPPT1Current = 0, MPPT1Voltage = 0, MPPT2Current = 0, MPPT2Voltage = 0, Po
 String PVO_APIkey, PVO[PVO_BUFFER_SIZE];
 #endif
 
-const char* serverIndex =
-"<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script>"
-"<form method='POST' action='#' enctype='multipart/form-data' id='upload_form'>"
-   "<input type='file' name='update'>"
-        "<input type='submit' value='Update'>"
-    "</form>"
- "<div id='prg'>progress: 0%</div>"
- "<script>"
-  "$('form').submit(function(e){"
-  "e.preventDefault();"
-  "var form = $('#upload_form')[0];"
-  "var data = new FormData(form);"
-  " $.ajax({"
-  "url: '/update',"
-  "type: 'POST',"
-  "data: data,"
-  "contentType: false,"
-  "processData:false,"
-  "xhr: function() {"
-  "var xhr = new window.XMLHttpRequest();"
-  "xhr.upload.addEventListener('progress', function(evt) {"
-  "if (evt.lengthComputable) {"
-  "var per = evt.loaded / evt.total;"
-  "$('#prg').html('progress: ' + Math.round(per*100) + '%');"
-  "}"
-  "}, false);"
-  "return xhr;"
-  "},"
-  "success:function(d, s) {"
-  "console.log('success!')"
- "},"
- "error: function (a, b, c) {"
- "}"
- "});"
- "});"
- "</script>";
-
 String htmlSelect(String Name, const String Options[], uint8_t OptionsSize, uint8_t Selected, const String Parameters) {
   uint8_t i;
   String ret = "<select name=\"" + Name + "\" size=\"1\" " + Parameters + ">";
@@ -234,12 +198,46 @@ void setIntensity(void) {
 }
 
 // HTTP handlers
-void handleRoot() {
-  server.send(200, "text/plain", "Hello from wESP32!\n");
-}
 void handleNotFound() {
   server.send(404, "text/plain", String("No ") + server.uri() + " here!\n");
 }
+
+void handleUpdateEnd() {
+  server.sendHeader("Connection", "close");
+  if (Update.hasError()) {
+    server.send(502, "text/plain", Update.errorString());
+  } else {
+    server.sendHeader("Refresh", "10");
+    server.sendHeader("Location", "/");
+    server.send(307);
+    ESP.restart();
+  }
+}
+
+void handleUpdate() {
+  size_t fsize = UPDATE_SIZE_UNKNOWN;
+  if (server.hasArg("size")) {
+    fsize = server.arg("size").toInt();
+  }
+  HTTPUpload &upload = server.upload();
+  if (upload.status == UPLOAD_FILE_START) {
+    debugI("Receiving Update: %s, Size: %d\n", upload.filename.c_str(), fsize);
+    if (!Update.begin(fsize)) {
+      debugE("%s\n", Update.errorString());
+    }
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+      debugE("%s\n", Update.errorString());
+    }
+  } else if (upload.status == UPLOAD_FILE_END) {
+    if (Update.end(true)) {
+      debugI("Update Success: %u bytes\nRebooting...\n", upload.totalSize);
+    } else {
+      debugE("%s\n", Update.errorString());
+    }
+  }
+}
+
 void handleSettings() {
   uint8_t clear, MBEdit, ShowEdit, i;
   String CheckSmallNumbers = "", TableMB = "", TableShow = "";
@@ -443,7 +441,7 @@ void handleSettings() {
   " <form method='POST' action='/' enctype='multipart/form-data'>"
   "  <table><tr><th>Inverter / Electric meter</th><th>IP address</th><th>Modbus unit</th></tr>" + TableMB + "</table>"
   " </form>"
-  " <p><a href='/serverIndex'>Firmware update</a></p>"
+  " <p><a href='/firmware'>Firmware update</a></p>"
   " <p><a href='/?clear=" + String(clear + 1) + "'>Factory reset</a> (Click two times)</p>"
   "</body>"
   "</html>");
@@ -803,6 +801,43 @@ void printModbus(char *str, float value, String unit, uint8_t maximumDigits) {
   }
 }
 
+void webServerInit() {
+  // Preferences
+  server.on("/", handleSettings);
+
+  // Update
+  server.on("/firmware", HTTP_GET, []() {
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/html", indexHtml);
+  });
+  server.on(
+    "/update", HTTP_POST,
+    []() {
+      handleUpdateEnd();
+    },
+    []() {
+      handleUpdate();
+    }
+  );
+
+  // Favicon
+  server.on("/favicon.ico", HTTP_GET, []() {
+    server.sendHeader("Content-Encoding", "gzip");
+    server.send_P(200, "image/x-icon", favicon_ico_gz, favicon_ico_gz_len);
+  });
+
+#ifdef PVOUTPUT
+  // PVOutput buffer
+  server.on("/PVObuffer", handlePVObuffer);
+
+#endif
+  // Not found
+  server.onNotFound(handleNotFound);
+
+  // Start webserver
+  server.begin();
+}
+
 void setup() {
   // Load preferences
   preferences.begin("PVview", true);
@@ -838,51 +873,8 @@ void setup() {
   // You can browse to wesp32demo.local with this
   MDNS.begin("wesp32demo");
 
-  // Bind HTTP handler
-  server.on("/", handleSettings);
-  server.onNotFound(handleNotFound);
-
-  // Update
-  server.on("/serverIndex", HTTP_GET, []() {
-    server.sendHeader("Connection", "close");
-    server.send(200, "text/html", serverIndex);
-  });
-  /*handling uploading firmware file */
-  server.on("/update", HTTP_POST, []() {
-    server.sendHeader("Connection", "close");
-    server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
-    ESP.restart();
-  }, []() {
-    HTTPUpload& upload = server.upload();
-    if (upload.status == UPLOAD_FILE_START) {
-      Serial.printf("Update: %s\n", upload.filename.c_str());
-      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { //start with max available size
-        Update.printError(Serial);
-      }
-    } else if (upload.status == UPLOAD_FILE_WRITE) {
-      /* flashing firmware to ESP*/
-      if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-        Update.printError(Serial);
-      }
-    } else if (upload.status == UPLOAD_FILE_END) {
-      if (Update.end(true)) { //true to set the size to the current progress
-        Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
-      } else {
-        Update.printError(Serial);
-      }
-    }
-  });
-
-  // Preferences
-  server.on("/settings", handleSettings);
-
-#ifdef PVOUTPUT
-  // PVOutput buffer
-  server.on("/PVObuffer", handlePVObuffer);
-
-#endif
-  // Start the Ethernet web server
-  server.begin();
+  // Start webserver
+  webServerInit();
 
   // Add service to MDNS-SD
   MDNS.addService("http", "tcp", 80);
