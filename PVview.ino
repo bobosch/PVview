@@ -246,68 +246,53 @@ void handleSettings() {
   String Send = server.arg("Send");
   if (Send == "1") {
     // Save preferences
-    preferences.begin("PVview", false);
     // Hostname
     Hostname = server.arg("Hostname");
     debugD("New Hostname %s", Hostname.c_str());
-    preferences.putString("Hostname", Hostname);
     // NTPServer
     NTPServer = server.arg("NTPServer");
     debugD("New NTPServer %s", NTPServer.c_str());
-    preferences.putString("NTPServer", NTPServer);
     // Interval
     Interval = server.arg("Interval").toInt();
     if (Interval < 1) Interval = 1;
     debugD("New Interval %u s", Interval);
-    preferences.putUChar("Interval", Interval);
     // RetryAfter
     RetryAfter = server.arg("RetryAfter").toInt();
     if (RetryAfter < 1) RetryAfter = 1;
     debugD("New RetryAfter %u", RetryAfter);
-    preferences.putUChar("RetryAfter", RetryAfter);
     // RetryError
     RetryError = server.arg("RetryError").toInt();
     if (RetryError < 1) RetryError = 1;
     debugD("New RetryError %u", RetryError);
-    preferences.putUChar("RetryError", RetryError);
     // AddEnergy
     AddEnergy = server.arg("AddEnergy").toFloat() * 1000;
     debugD("New AddEnergy %0.0f Wh", AddEnergy);
-    preferences.putFloat("AddEnergy", AddEnergy);
     // MultiplyEnergy
     MultiplyEnergy = abs(server.arg("MultiplyEnergy").toFloat());
     debugD("New MultiplyEnergy %0.6f", MultiplyEnergy);
-    preferences.putFloat("MultiplyEnergy", MultiplyEnergy);
     // CheckSmallNumbers
     SmallNumbers = server.arg("SmallNumbers").toInt() % 2;
     debugD("New SmallNumbers %s", SmallNumbers ? "true" : "false");
-    preferences.putBool("SmallNumbers", SmallNumbers);
     // Intensity
     Intensity = server.arg("Intensity").toInt() % 16;
     debugD("New Intensity %u", Intensity);
-    preferences.putUChar("Intensity", Intensity);
     // IntensityMaxPower
     IntensityMaxPower = abs(server.arg("IntensityMaxPower").toFloat());
     debugD("New IntensityMaxPower %0.0f", IntensityMaxPower);
-    preferences.putFloat("IntensityMaxPow", IntensityMaxPower);
     // IntensityMin
     IntensityMin = server.arg("IntensityMin").toInt() % 16;
     debugD("New IntensityMin %u", IntensityMin);
-    preferences.putUChar("IntensityMin", IntensityMin);
     setIntensity();
 #ifdef PVOUTPUT
     // PVO API key
     PVO_APIkey = server.arg("PVO_APIkey");
     debugD("New PVO_APIkey %s", PVO_APIkey.c_str());
-    preferences.putString("PVO_APIkey", PVO_APIkey);
     // PVO ID
     PVO_ID = server.arg("PVO_ID").toInt();
     debugD("New PVO_ID %u", PVO_ID);
-    preferences.putInt("PVO_ID", PVO_ID);
  #endif
-    // Saved
-    debugI("Settings saved");
-    preferences.end();
+    // Save
+    savePreferences();
   }
 
   if (SmallNumbers) CheckSmallNumbers = " checked";
@@ -318,18 +303,16 @@ void handleSettings() {
     Show[ShowEdit - 1].Element = server.arg("ShowElement").toInt();
     Show[ShowEdit - 1].When = server.arg("ShowWhen").toInt();
     Show[ShowEdit - 1].Align = server.arg("ShowAlign").toInt();
-    preferences.begin("PVview", false);
-    preferences.putBytes("Show", &Show, sizeof(Show));
-    preferences.end();
     ShowEdit = 0;
+    // Save
+    savePreferences();
   }
 
   if (server.arg("MBNew") == "1" && MBcount < 5) MBcount++;
   if (server.arg("MBDel") == "1" && MBcount > 0) {
     MBcount--;
-    preferences.begin("PVview", false);
-    preferences.putUChar("MBcount", MBcount);
-    preferences.end();
+    // Save
+    savePreferences();
   }
   MBEdit = server.arg("MBEdit").toInt();
   if (MBEdit > MBcount) MBEdit = 0;
@@ -344,11 +327,9 @@ void handleSettings() {
     } else {
       MB[MBEdit - 1].Unit = server.arg("MBUnit").toInt();
     }
-    preferences.begin("PVview", false);
-    preferences.putBytes("MB", &MB, sizeof(MB));
-    preferences.putUChar("MBcount", MBcount);
-    preferences.end();
     MBEdit = 0;
+    // Save
+    savePreferences();
   }
 
   clear = server.arg("clear").toInt();
@@ -800,6 +781,60 @@ void printModbus(char *str, float value, String unit, uint8_t maximumDigits) {
   }
 }
 
+void loadPreferences() {
+  preferences.begin("Network", true);
+  Hostname = preferences.getString("Hostname", "wESP32");
+  NTPServer = preferences.getString("NTPServer", "pool.ntp.org");
+  preferences.end();
+
+  preferences.begin("PVview", true);
+  Interval = preferences.getUChar("Interval", 5);
+  RetryAfter = preferences.getUChar("RetryAfter", 3);
+  RetryError = preferences.getUChar("RetryError", 3);
+  AddEnergy = preferences.getFloat("AddEnergy", 0);
+  MultiplyEnergy = preferences.getFloat("MultiplyEnergy", 1);
+  preferences.getBytes("Show", &Show, sizeof(Show));
+  preferences.getBytes("MB", &MB, sizeof(MB));
+  MBcount = preferences.getUChar("MBcount", 0);
+  SmallNumbers = preferences.getBool("SmallNumbers", false);
+  Intensity = preferences.getUChar("Intensity", 7);
+  IntensityMaxPower = preferences.getFloat("IntensityMaxPow", 0);
+  IntensityMin = preferences.getUChar("IntensityMin", 0);
+#ifdef PVOUTPUT
+  PVO_APIkey = preferences.getString("PVO_APIkey");
+  PVO_ID = preferences.getInt("PVO_ID");
+#endif
+  preferences.end();
+}
+
+void savePreferences() {
+  preferences.begin("Network", false);
+  preferences.putString("Hostname", Hostname);
+  preferences.putString("NTPServer", NTPServer);
+  preferences.end();
+
+  preferences.begin("PVview", false);
+  preferences.putUChar("Interval", Interval);
+  preferences.putUChar("RetryAfter", RetryAfter);
+  preferences.putUChar("RetryError", RetryError);
+  preferences.putFloat("AddEnergy", AddEnergy);
+  preferences.putFloat("MultiplyEnergy", MultiplyEnergy);
+  preferences.putBytes("Show", &Show, sizeof(Show));
+  preferences.putBytes("MB", &MB, sizeof(MB));
+  preferences.putUChar("MBcount", MBcount);
+  preferences.putBool("SmallNumbers", SmallNumbers);
+  preferences.putUChar("Intensity", Intensity);
+  preferences.putFloat("IntensityMaxPow", IntensityMaxPower);
+  preferences.putUChar("IntensityMin", IntensityMin);
+#ifdef PVOUTPUT
+  preferences.putString("PVO_APIkey", PVO_APIkey);
+  preferences.putInt("PVO_ID", PVO_ID);
+#endif
+  preferences.end();
+
+  debugI("Settings saved");
+}
+
 void webServerInit() {
   // Preferences
   server.on("/", handleSettings);
@@ -839,26 +874,8 @@ void webServerInit() {
 
 void setup() {
   // Load preferences
-  preferences.begin("PVview", true);
-  Hostname = preferences.getString("Hostname", "wESP32");
-  NTPServer = preferences.getString("NTPServer", "pool.ntp.org");
-  Interval = preferences.getUChar("Interval", 5);
-  RetryAfter = preferences.getUChar("RetryAfter", 3);
-  RetryError = preferences.getUChar("RetryError", 3);
-  AddEnergy = preferences.getFloat("AddEnergy", 0);
-  MultiplyEnergy = preferences.getFloat("MultiplyEnergy", 1);
-  preferences.getBytes("Show", &Show, sizeof(Show));
-  preferences.getBytes("MB", &MB, sizeof(MB));
-  MBcount = preferences.getUChar("MBcount", 0);
-  SmallNumbers = preferences.getBool("SmallNumbers", false);
-  Intensity = preferences.getUChar("Intensity", 7);
-  IntensityMaxPower = preferences.getFloat("IntensityMaxPow", 0);
-  IntensityMin = preferences.getUChar("IntensityMin", 0);
-#ifdef PVOUTPUT
-  PVO_APIkey = preferences.getString("PVO_APIkey");
-  PVO_ID = preferences.getInt("PVO_ID");
-#endif
-  preferences.end();
+  loadPreferences();
+
   RetryAfterCount = RetryAfter;
 
   WiFi.onEvent(WiFiEvent);
