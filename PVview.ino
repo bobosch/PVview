@@ -137,7 +137,7 @@ String Hostname, NTPServer;
 
 struct tm timeinfo;
 Preferences preferences;
-MD_Parola P = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
+MD_Parola P = MD_Parola(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
 Modbus M[MB_COUNT];
 WebServer server(80);
 RemoteDebug Debug;
